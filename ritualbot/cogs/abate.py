@@ -871,8 +871,58 @@ class Abate(commands.Cog):
         )
         await enviar_log(interaction.guild, log)
 
+    # =========================================
+    # COMANDO PREFIXO — PAINEL LIMPO
+    # Use: !painel_abate
+    # O bot apaga a mensagem e envia apenas o painel.
+    # =========================================
+
+    @commands.command(name="painel_abate")
+    @commands.has_permissions(administrator=True)
+    async def painel_abate_prefix(self, ctx: commands.Context):
+        if ctx.channel.id != CANAL_ABATE_ID:
+            return
+
+        try:
+            await ctx.message.delete()
+        except discord.Forbidden:
+            pass
+        except discord.HTTPException:
+            pass
+
+        embed = discord.Embed(
+            title="🩸 JOGO DO ABATE — RITUAL PRINCIPAL",
+            description=(
+                "```ansi\n"
+                "\u001b[35mO ritual foi iniciado.\u001b[0m\n"
+                "```\n"
+                "A partir deste momento, cada escolha pode definir seu destino.\n\n"
+                "🎯 **Alvos secretos por DM**\n"
+                "📜 **Contratos e desafios**\n"
+                "❤️ **Cada participante possui 3 vidas**\n"
+                "💀 **Eventos especiais podem alterar o jogo**\n"
+                "📊 **Ranking atualizado em tempo real**\n\n"
+                "> **Sobreviva. Cumpra. Elimine.**"
+            ),
+            color=COR_ROXA
+        )
+
+        embed.add_field(
+            name="⚠️ Aviso",
+            value="Alguns nomes serão marcados. Nem todos permanecerão de pé.",
+            inline=False
+        )
+
+        if avatar_bot(self.bot):
+            embed.set_thumbnail(url=avatar_bot(self.bot))
+
+        if BANNER_URL:
+            embed.set_image(url=BANNER_URL)
+
+        embed.set_footer(text="Família Sant's • RitualBot • O plano segue em andamento")
+
+        await ctx.send(embed=embed, view=PainelAbate(self.bot))
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Abate(bot))
-
-    
