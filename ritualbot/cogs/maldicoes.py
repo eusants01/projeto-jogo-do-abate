@@ -1,6 +1,7 @@
 import random
 import asyncio
 import sqlite3
+import datetime
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -12,8 +13,15 @@ CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
+# Tempo normal
 TEMPO_MINIMO = 600      # 10 minutos
 TEMPO_MAXIMO = 2700     # 45 minutos
+
+# Tempo de madrugada
+TEMPO_MADRUGADA_MIN = 300    # 5 minutos
+TEMPO_MADRUGADA_MAX = 1200   # 20 minutos
+
+TEMPO_EXPIRACAO = 300  # 5 minutos
 
 CARGOS_PROGRESSAO = [
     (50, 1500547442003673220),
@@ -29,20 +37,23 @@ MALDICOES = [
         "imagem": "https://media.tenor.com/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
         "chance": 20,
         "cargo_id": 123456789012345678,
+        "rara": False,
     },
     {
         "nome": "Mahoraga",
         "descricao": "A roda começou a girar... adapte-se ou seja destruído.",
         "imagem": "https://media.tenor.com/1qESUcxlIRMAAAAC/mahoraga-then-shadows.gif",
-        "chance": 7,
+        "chance": 6,
         "cargo_id": 123456789012345678,
+        "rara": True,
     },
     {
         "nome": "Sukuna",
         "descricao": "O Rei das Maldições despertou. O domínio foi aberto.",
         "imagem": "https://media.tenor.com/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
-        "chance": 4,
+        "chance": 3,
         "cargo_id": 123456789012345678,
+        "rara": True,
     },
     {
         "nome": "Maldição Comum",
@@ -50,6 +61,7 @@ MALDICOES = [
         "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
         "chance": 60,
         "cargo_id": 123456789012345678,
+        "rara": False,
     },
     {
         "nome": "Maldição Especial",
@@ -57,6 +69,7 @@ MALDICOES = [
         "imagem": "https://media.tenor.com/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
         "chance": 30,
         "cargo_id": 123456789012345678,
+        "rara": False,
     },
 ]
 
@@ -132,6 +145,26 @@ def pegar_proximo_rank(vitorias: int):
     return None, None
 
 
+def escolher_maldicao():
+    # 12% de chance de aparecer maldição rara
+    if random.randint(1, 100) <= 12:
+        raras = [m for m in MALDICOES if m.get("rara")]
+        return random.choice(raras)
+
+    comuns = [m for m in MALDICOES if not m.get("rara")]
+    return random.choice(comuns)
+
+
+def buscar_maldicao_por_nome(nome: str):
+    nome = nome.lower().strip()
+
+    for maldicao in MALDICOES:
+        if maldicao["nome"].lower() == nome:
+            return maldicao
+
+    return None
+
+
 async def atualizar_cargo_progressao(member: discord.Member):
     vitorias = pegar_vitorias(member.id)
 
@@ -171,9 +204,32 @@ async def atualizar_cargo_progressao(member: discord.Member):
 
 class BotaoExorcizar(discord.ui.View):
     def __init__(self, maldicao):
-        super().__init__(timeout=300)
+        super().__init__(timeout=TEMPO_EXPIRACAO)
         self.maldicao = maldicao
         self.derrotada = False
+        self.cooldown = set()
+        self.mensagem = None
+
+    async def on_timeout(self):
+        if self.derrotada:
+            return
+
+        for item in self.children:
+            item.disabled = True
+
+        if self.mensagem:
+            try:
+                await self.mensagem.edit(view=self)
+                await self.mensagem.channel.send(
+                    f"🌑 **{self.maldicao['nome']} desapareceu nas sombras...**\n"
+                    f"Ninguém conseguiu exorcizá-la a tempo."
+                )
+            except Exception as e:
+                print(f"[ERRO AO EXPIRAR MALDIÇÃO] {e}")
+
+    async def remover_cooldown(self, user_id: int):
+        await asyncio.sleep(5)
+        self.cooldown.discard(user_id)
 
     @discord.ui.button(
         label="Tentar Exorcizar",
@@ -191,6 +247,16 @@ class BotaoExorcizar(discord.ui.View):
                 ephemeral=True
             )
             return
+
+        if interaction.user.id in self.cooldown:
+            await interaction.response.send_message(
+                "⏳ Você acabou de tentar exorcizar. Espere alguns segundos.",
+                ephemeral=True
+            )
+            return
+
+        self.cooldown.add(interaction.user.id)
+        asyncio.create_task(self.remover_cooldown(interaction.user.id))
 
         sorteio = random.randint(1, 100)
 
@@ -217,7 +283,9 @@ class BotaoExorcizar(discord.ui.View):
                 )
                 return
 
-            button.disabled = True
+            for item in self.children:
+                item.disabled = True
+
             await interaction.response.edit_message(view=self)
 
             vitorias = pegar_vitorias(interaction.user.id)
@@ -282,7 +350,6 @@ class BotaoExorcizar(discord.ui.View):
                     )
 
                 embed_log.set_footer(text="Família Sant's • Logs de Maldições")
-
                 await canal_log.send(embed=embed_log)
 
         else:
@@ -305,10 +372,14 @@ class Maldicoes(commands.Cog):
         if self.tarefa_maldicoes:
             self.tarefa_maldicoes.cancel()
 
-    async def enviar_maldicao(self, canal, manual=False):
-        maldicao = random.choice(MALDICOES)
+    async def enviar_maldicao(self, canal, manual=False, maldicao_especifica=None):
+        maldicao = maldicao_especifica or escolher_maldicao()
 
-        extra = "⚠️ Invocada manualmente." if manual else "⏳ Essa maldição ficará ativa por **5 minutos**."
+        extra = (
+            "⚠️ Invocada manualmente."
+            if manual
+            else f"⏳ Essa maldição ficará ativa por **{TEMPO_EXPIRACAO // 60} minutos**."
+        )
 
         embed = discord.Embed(
             title=f"💀 {maldicao['nome']} apareceu!",
@@ -324,28 +395,57 @@ class Maldicoes(commands.Cog):
         embed.set_image(url=maldicao["imagem"])
         embed.set_footer(text="Família Sant's • Maldições Aleatórias")
 
-        await canal.send(
+        view = BotaoExorcizar(maldicao)
+
+        mensagem = await canal.send(
             embed=embed,
-            view=BotaoExorcizar(maldicao)
+            view=view
         )
+
+        view.mensagem = mensagem
 
     async def sistema_maldicoes(self):
         await self.bot.wait_until_ready()
 
         while not self.bot.is_closed():
-            tempo = random.randint(TEMPO_MINIMO, TEMPO_MAXIMO)
+            agora = datetime.datetime.now()
+            hora = agora.hour
+
+            if 0 <= hora <= 5:
+                tempo = random.randint(TEMPO_MADRUGADA_MIN, TEMPO_MADRUGADA_MAX)
+            else:
+                tempo = random.randint(TEMPO_MINIMO, TEMPO_MAXIMO)
+
             await asyncio.sleep(tempo)
 
             canal = self.bot.get_channel(CANAL_MALDICOES_ID)
 
             if not canal:
+                print("[MALDIÇÕES] Canal não encontrado.")
                 continue
 
-            await self.enviar_maldicao(canal)
+            try:
+                await self.enviar_maldicao(canal)
+            except Exception as e:
+                print(f"[ERRO MALDIÇÕES] {e}")
 
     @commands.command(name="maldicao")
     @commands.has_permissions(administrator=True)
-    async def spawn_maldicao(self, ctx):
+    async def spawn_maldicao(self, ctx, *, nome: str = None):
+        if nome:
+            maldicao = buscar_maldicao_por_nome(nome)
+
+            if not maldicao:
+                nomes = ", ".join([m["nome"] for m in MALDICOES])
+                await ctx.reply(
+                    f"❌ Maldição não encontrada.\n"
+                    f"Use uma dessas: `{nomes}`"
+                )
+                return
+
+            await self.enviar_maldicao(ctx.channel, manual=True, maldicao_especifica=maldicao)
+            return
+
         await self.enviar_maldicao(ctx.channel, manual=True)
 
     @spawn_maldicao.error
@@ -354,6 +454,7 @@ class Maldicoes(commands.Cog):
             await ctx.reply("❌ Apenas administradores podem invocar uma maldição.")
         else:
             await ctx.reply("⚠️ Ocorreu um erro ao invocar a maldição.")
+            print(f"[ERRO COMANDO MALDIÇÃO] {error}")
 
     @app_commands.command(
         name="ranking_exorcistas",
@@ -375,7 +476,8 @@ class Maldicoes(commands.Cog):
             membro = interaction.guild.get_member(user_id)
             nome = membro.mention if membro else f"`{user_id}`"
 
-            texto += f"**{posicao}º** — {nome} | 🧿 **{vitorias}** maldição(ões)\n"
+            medalha = ["🥇", "🥈", "🥉"][posicao - 1] if posicao <= 3 else f"**{posicao}º**"
+            texto += f"{medalha} {nome} — 🧿 **{vitorias}** vitória(s)\n"
 
         embed = discord.Embed(
             title="🏆 Ranking de Exorcistas",
@@ -384,7 +486,6 @@ class Maldicoes(commands.Cog):
         )
 
         embed.set_footer(text="Família Sant's • Sistema de Maldições")
-
         await interaction.response.send_message(embed=embed)
 
 
