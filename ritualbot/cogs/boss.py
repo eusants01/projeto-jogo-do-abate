@@ -1,6 +1,7 @@
 import random
 import discord
 from discord.ext import commands
+
 from utils.db import (
     buscar_jogador,
     adicionar_abate,
@@ -10,13 +11,10 @@ from utils.db import (
 
 COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
+COR_ROXA = 0x7B2CFF
 
 VIDAS_MAXIMAS = 20
 CANAL_LOG_MALDICOES_ID = 1500543560834089272
-
-# =========================
-# BOSSES
-# =========================
 
 BOSSES = [
     {
@@ -61,17 +59,24 @@ BOSSES = [
 ]
 
 
-def buscar_boss(nome):
-    nome = nome.lower()
+def buscar_boss(nome: str):
+    nome = nome.lower().strip()
+
     for boss in BOSSES:
         if boss["nome"].lower() == nome:
             return boss
+
     return None
 
 
-# =========================
-# VIEW DO BOSS
-# =========================
+async def enviar_log(guild: discord.Guild, embed: discord.Embed):
+    if not guild:
+        return
+
+    canal = guild.get_channel(CANAL_LOG_MALDICOES_ID)
+    if canal:
+        await canal.send(embed=embed)
+
 
 class BossView(discord.ui.View):
     def __init__(self, boss):
@@ -85,18 +90,27 @@ class BossView(discord.ui.View):
         self.ultimo_hit = None
 
     def barra(self):
-        pct = self.vida / self.max_vida
+        if self.max_vida <= 0:
+            return "⬛" * 10
+
+        pct = max(0, self.vida) / self.max_vida
         cheio = round(pct * 10)
         vazio = 10 - cheio
+
         return "🟥" * cheio + "⬛" * vazio
 
     def embed(self):
-        ranking = sorted(self.danos.items(), key=lambda x: x[1], reverse=True)[:5]
+        ranking = sorted(
+            self.danos.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:5]
 
         texto = ""
-        for i, (uid, dmg) in enumerate(ranking, 1):
-            medalha = ["🥇", "🥈", "🥉"][i-1] if i <= 3 else f"{i}º"
-            texto += f"{medalha} <@{uid}> — {dmg} dano\n"
+
+        for i, (uid, dmg) in enumerate(ranking, start=1):
+            medalha = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else f"`#{i}`"
+            texto += f"{medalha} <@{uid}> — 💥 **{dmg}** dano\n"
 
         if not texto:
             texto = "Ninguém atacou ainda."
@@ -105,50 +119,148 @@ class BossView(discord.ui.View):
             title=f"💀 BOSS — {self.boss['nome']}",
             description=(
                 f"{self.boss['descricao']}\n\n"
-                f"❤️ {self.vida}/{self.max_vida}\n{self.barra()}"
+                f"❤️ **Vida:** `{max(0, self.vida)}/{self.max_vida}`\n"
+                f"{self.barra()}\n\n"
+                f"⏳ Tempo limite: **{self.boss['tempo'] // 60} minutos**"
             ),
             color=COR_VERMELHA
         )
 
-        embed.add_field(name="Ranking", value=texto, inline=False)
+        embed.add_field(name="🏆 Ranking de Dano", value=texto, inline=False)
         embed.set_image(url=self.boss["imagem"])
+        embed.set_footer(text="Família Sant's • Raid Boss")
         return embed
 
-    async def finalizar(self, channel, guild):
+    async def finalizar(self, channel: discord.TextChannel, guild: discord.Guild):
+        if not self.danos:
+            return
+
         top = max(self.danos, key=self.danos.get)
 
         for uid in self.danos:
             if buscar_jogador(uid):
                 adicionar_abate(uid, self.boss["recompensa_participou"])
 
-        adicionar_abate(top, self.boss["recompensa_top"])
+        if buscar_jogador(top):
+            adicionar_abate(top, self.boss["recompensa_top"])
 
-        if self.ultimo_hit:
+        if self.ultimo_hit and buscar_jogador(self.ultimo_hit):
             adicionar_abate(self.ultimo_hit, self.boss["recompensa_final"])
 
-        await channel.send(
-            f"🏆 Boss derrotado!\n"
-            f"🥇 Top: <@{top}>\n"
-            f"⚔️ Final: <@{self.ultimo_hit}>"
+        ranking = sorted(
+            self.danos.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:5]
+
+        texto_ranking = ""
+
+        for i, (uid, dmg) in enumerate(ranking, start=1):
+            medalha = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else f"`#{i}`"
+            texto_ranking += f"{medalha} <@{uid}> — 💥 **{dmg}** dano\n"
+
+        embed = discord.Embed(
+            title="🏆 BOSS DERROTADO",
+            description=(
+                f"💀 **Boss:** {self.boss['nome']}\n"
+                f"🥇 **Maior dano:** <@{top}>\n"
+                f"⚔️ **Golpe final:** <@{self.ultimo_hit}>\n\n"
+                f"🎁 **Recompensas:**\n"
+                f"• Participou: +{self.boss['recompensa_participou']} abate(s)\n"
+                f"• Top dano: +{self.boss['recompensa_top']} abate(s)\n"
+                f"• Golpe final: +{self.boss['recompensa_final']} abate(s)"
+            ),
+            color=COR_VERDE
         )
+
+        embed.add_field(name="📊 Ranking Final", value=texto_ranking, inline=False)
+        embed.set_footer(text="Família Sant's • Raid Boss Finalizado")
+
+        await channel.send(embed=embed)
+        await enviar_log(guild, embed)
 
     async def on_timeout(self):
         if self.finalizado:
             return
+
+        self.finalizado = True
+
+        for item in self.children:
+            item.disabled = True
+
+        if self.mensagem:
+            try:
+                await self.mensagem.edit(embed=self.embed(), view=self)
+            except Exception:
+                pass
 
         jogadores = listar_jogadores_vivos()
 
         if not jogadores:
             return
 
-        for j in random.sample(jogadores, min(3, len(jogadores))):
-            remover_vida(j[0], self.boss["dano_falha"])
+        atingidos = random.sample(jogadores, min(3, len(jogadores)))
 
-        await self.mensagem.channel.send("💀 Boss venceu.")
+        texto_atingidos = ""
 
-    @discord.ui.button(label="Atacar", style=discord.ButtonStyle.danger)
-    async def atacar(self, interaction: discord.Interaction, button):
+        for jogador in atingidos:
+            user_id = jogador[0]
+            resultado = remover_vida(user_id, self.boss["dano_falha"])
+
+            if resultado:
+                vidas = resultado[2]
+                status = resultado[5]
+                texto_atingidos += (
+                    f"💀 <@{user_id}> perdeu **{self.boss['dano_falha']}** vida(s). "
+                    f"❤️ `{vidas}/{VIDAS_MAXIMAS}`"
+                )
+
+                if status == "eliminado":
+                    texto_atingidos += " ☠️ **ELIMINADO**"
+
+                texto_atingidos += "\n"
+
+        embed = discord.Embed(
+            title="☠️ O BOSS VENCEU",
+            description=(
+                f"💀 **{self.boss['nome']}** não foi derrotado a tempo.\n\n"
+                f"{texto_atingidos}"
+            ),
+            color=COR_VERMELHA
+        )
+
+        embed.set_footer(text="Família Sant's • Raid Boss")
+        await self.mensagem.channel.send(embed=embed)
+        await enviar_log(self.mensagem.guild, embed)
+
+    @discord.ui.button(
+        label="Atacar",
+        emoji="⚔️",
+        style=discord.ButtonStyle.danger,
+        custom_id="boss_atacar"
+    )
+    async def atacar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.finalizado:
+            await interaction.response.send_message(
+                "💀 Esse boss já foi finalizado.",
+                ephemeral=True
+            )
+            return
+
+        jogador = buscar_jogador(interaction.user.id)
+
+        if not jogador:
+            await interaction.response.send_message(
+                "🚫 Você precisa entrar no **Jogo do Abate** antes de atacar bosses.",
+                ephemeral=True
+            )
+            return
+
+        if jogador[5] != "vivo":
+            await interaction.response.send_message(
+                "💀 Você está eliminado e não pode atacar bosses.",
+                ephemeral=True
+            )
             return
 
         dano = random.randint(self.boss["dano_min"], self.boss["dano_max"])
@@ -158,9 +270,11 @@ class BossView(discord.ui.View):
         self.ultimo_hit = interaction.user.id
 
         if self.vida <= 0:
+            self.vida = 0
             self.finalizado = True
-            for i in self.children:
-                i.disabled = True
+
+            for item in self.children:
+                item.disabled = True
 
             await interaction.response.edit_message(embed=self.embed(), view=self)
             await self.finalizar(interaction.channel, interaction.guild)
@@ -169,28 +283,53 @@ class BossView(discord.ui.View):
         await interaction.response.edit_message(embed=self.embed(), view=self)
 
 
-# =========================
-# COG
-# =========================
-
 class Boss(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @commands.command(name="boss")
+    @commands.has_permissions(administrator=True)
     async def boss(self, ctx, *, nome=None):
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
         if nome:
             boss = buscar_boss(nome)
         else:
             boss = random.choice(BOSSES)
 
         if not boss:
-            await ctx.send("Boss não encontrado.")
+            nomes = ", ".join([b["nome"] for b in BOSSES])
+            await ctx.send(
+                f"❌ Boss não encontrado.\nUse: `{nomes}`",
+                delete_after=10
+            )
             return
 
         view = BossView(boss)
-        msg = await ctx.send(embed=view.embed(), view=view)
+
+        msg = await ctx.send(
+            embed=view.embed(),
+            view=view
+        )
+
         view.mensagem = msg
+
+    @boss.error
+    async def boss_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.reply(
+                "❌ Apenas administradores podem invocar bosses.",
+                delete_after=8
+            )
+        else:
+            await ctx.reply(
+                "⚠️ Ocorreu um erro ao invocar o boss.",
+                delete_after=8
+            )
+            print(f"[ERRO BOSS] {error}")
 
 
 async def setup(bot):
