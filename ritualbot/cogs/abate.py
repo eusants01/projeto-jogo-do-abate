@@ -35,14 +35,12 @@ GUILD_ID = 1480334256763961465
 CANAL_ABATE_ID = 1500151299209957376
 
 # 📜 Canal de logs automáticos
-# TROQUE PELO ID REAL DO SEU CANAL logs-abate
 CANAL_LOGS_ID = 1500386205160833115
 
 # 💀 Canal de anúncios/eventos
-# TROQUE PELO ID REAL DO SEU CANAL eventos-abate
 CANAL_EVENTOS_ID = 1500386762210672680
 
-# Opcional: coloque aqui o link direto do banner hospedado
+# Banner do painel
 BANNER_URL = "https://i.imgur.com/28Oo2ln.png"
 
 
@@ -87,12 +85,18 @@ def embaralhar_alvos(jogadores):
 
 
 async def enviar_log(guild: discord.Guild, embed: discord.Embed):
+    if not guild:
+        return
+
     canal = guild.get_channel(CANAL_LOGS_ID)
     if canal:
         await canal.send(embed=embed)
 
 
 async def anunciar_evento(guild: discord.Guild, embed: discord.Embed | None = None, mensagem: str | None = None):
+    if not guild:
+        return
+
     canal = guild.get_channel(CANAL_EVENTOS_ID)
     if canal:
         if embed:
@@ -382,7 +386,18 @@ class Abate(commands.Cog):
 
         embed.set_footer(text="Família Sant's • RitualBot • O plano segue em andamento")
 
-        await interaction.response.send_message(embed=embed, view=PainelAbate(self.bot))
+        # Resposta privada: evita aparecer publicamente "usou /painel_abate".
+        await interaction.response.defer(ephemeral=True)
+
+        await interaction.channel.send(
+            embed=embed,
+            view=PainelAbate(self.bot)
+        )
+
+        await interaction.followup.send(
+            "✅ Painel enviado com sucesso.",
+            ephemeral=True
+        )
 
     @app_commands.command(
         name="sortear_alvos",
