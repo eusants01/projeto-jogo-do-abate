@@ -25,6 +25,17 @@ def criar_tabelas():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS eventos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        descricao TEXT NOT NULL,
+        multiplicador_abate INTEGER DEFAULT 1,
+        dano_extra INTEGER DEFAULT 0,
+        ativo INTEGER DEFAULT 0
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -63,6 +74,22 @@ def buscar_jogador(user_id: int):
     return jogador
 
 
+def listar_jogadores_vivos():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT user_id, username, vidas, abates, contratos, status, alvo_id, familia
+    FROM jogadores
+    WHERE status = 'vivo'
+    ORDER BY username ASC
+    """)
+
+    jogadores = cursor.fetchall()
+    conn.close()
+    return jogadores
+
+
 def listar_ranking():
     conn = conectar()
     cursor = conn.cursor()
@@ -79,26 +106,53 @@ def listar_ranking():
     return jogadores
 
 
-def adicionar_abate(vencedor_id: int):
+def definir_alvo(user_id: int, alvo_id: int | None):
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute(
-        "UPDATE jogadores SET abates = abates + 1 WHERE user_id = ?",
-        (vencedor_id,)
+        "UPDATE jogadores SET alvo_id = ? WHERE user_id = ?",
+        (alvo_id, user_id)
     )
 
     conn.commit()
     conn.close()
 
 
-def remover_vida(user_id: int):
+def limpar_alvos():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE jogadores SET alvo_id = NULL")
+
+    conn.commit()
+    conn.close()
+
+
+def adicionar_abate(vencedor_id: int, quantidade: int = 1):
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute(
-        "UPDATE jogadores SET vidas = vidas - 1 WHERE user_id = ? AND status = 'vivo'",
-        (user_id,)
+        "UPDATE jogadores SET abates = abates + ? WHERE user_id = ?",
+        (quantidade, vencedor_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def remover_vida(user_id: int, quantidade: int = 1):
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE jogadores
+        SET vidas = vidas - ?
+        WHERE user_id = ? AND status = 'vivo'
+        """,
+        (quantidade, user_id)
     )
 
     cursor.execute(
@@ -110,7 +164,11 @@ def remover_vida(user_id: int):
 
     if resultado and resultado[0] <= 0:
         cursor.execute(
-            "UPDATE jogadores SET vidas = 0, status = 'eliminado' WHERE user_id = ?",
+            """
+            UPDATE jogadores
+            SET vidas = 0, status = 'eliminado', alvo_id = NULL
+            WHERE user_id = ?
+            """,
             (user_id,)
         )
 
@@ -120,11 +178,81 @@ def remover_vida(user_id: int):
     return buscar_jogador(user_id)
 
 
+def criar_evento(nome: str, descricao: str, multiplicador_abate: int = 1, dano_extra: int = 0):
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO eventos (nome, descricao, multiplicador_abate, dano_extra, ativo)
+        VALUES (?, ?, ?, ?, 0)
+        """,
+        (nome, descricao, multiplicador_abate, dano_extra)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def listar_eventos():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, nome, descricao, multiplicador_abate, dano_extra, ativo
+    FROM eventos
+    ORDER BY id DESC
+    """)
+
+    eventos = cursor.fetchall()
+    conn.close()
+    return eventos
+
+
+def buscar_evento_ativo():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, nome, descricao, multiplicador_abate, dano_extra, ativo
+    FROM eventos
+    WHERE ativo = 1
+    ORDER BY id DESC
+    LIMIT 1
+    """)
+
+    evento = cursor.fetchone()
+    conn.close()
+    return evento
+
+
+def ativar_evento(evento_id: int):
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE eventos SET ativo = 0")
+    cursor.execute("UPDATE eventos SET ativo = 1 WHERE id = ?", (evento_id,))
+
+    conn.commit()
+    conn.close()
+
+
+def encerrar_eventos():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE eventos SET ativo = 0")
+
+    conn.commit()
+    conn.close()
+
+
 def resetar_jogo():
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM jogadores")
+    cursor.execute("UPDATE eventos SET ativo = 0")
 
     conn.commit()
     conn.close()
