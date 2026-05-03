@@ -3,7 +3,7 @@ from pathlib import Path
 
 DB_PATH = Path("ritualbot.db")
 
-VIDAS_MAXIMAS = 20  # 🔥 NOVO PADRÃO
+VIDAS_MAXIMAS = 150  # 🔥 NOVO PADRÃO
 
 
 def conectar():

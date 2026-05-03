@@ -13,7 +13,7 @@ COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
 COR_ROXA = 0x7B2CFF
 
-VIDAS_MAXIMAS = 20
+VIDAS_MAXIMAS = 150
 CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 BOSSES = [
@@ -21,33 +21,41 @@ BOSSES = [
         "nome": "Sukuna",
         "descricao": "O Rei das Maldições abriu seu domínio.",
         "imagem": "https://c.tenor.com/w3KbwTJ-F5IAAAAd/tenor.gif",
-        "vida": 15000,
+        "vida": 50000,
         "tempo": 600,
         "dano_min": 15,
         "dano_max": 40,
         "recompensa_participou": 1,
         "recompensa_top": 5,
         "recompensa_final": 3,
-        "dano_falha": 5,
+        "dano_falha": 10,
+        "agressividade": 1,
+        "agressividade_max": 8,
+        "habilidade": "corte_area",
+        "dano_habilidade": 18,
     },
     {
         "nome": "Mahoraga",
         "descricao": "A roda gira. A adaptação começou.",
         "imagem": "https://c.tenor.com/mS_lFC5waJcAAAAC/tenor.gif",
-        "vida": 25000,
+        "vida": 65000,
         "tempo": 600,
         "dano_min": 10,
         "dano_max": 35,
         "recompensa_participou": 1,
         "recompensa_top": 4,
         "recompensa_final": 3,
-        "dano_falha": 4,
+        "dano_falha": 8,
+        "agressividade": 1,
+        "agressividade_max": 7,
+        "habilidade": "adaptacao",
+        "dano_habilidade": 12,
     },
     {
         "nome": "Brunaandsants",
-        "descricao": "Uma historia que jamais será apagada.",
+        "descricao": "Uma história que jamais será apagada.",
         "imagem": "https://c.tenor.com/m__ZnOd5kF8AAAAd/tenor.gif",
-        "vida": 70000,
+        "vida": 90000,
         "tempo": 600,
         "dano_min": 10,
         "dano_max": 35,
@@ -55,19 +63,27 @@ BOSSES = [
         "recompensa_top": 4,
         "recompensa_final": 3,
         "dano_falha": 15,
+        "agressividade": 1,
+        "agressividade_max": 10,
+        "habilidade": "pacto_eterno",
+        "dano_habilidade": 20,
     },
-    {    
+    {
         "nome": "Rika",
         "descricao": "Uma força esmagadora apareceu.",
         "imagem": "https://c.tenor.com/7z8vSgeTDq0AAAAd/tenor.gif",
-        "vida": 11500,
+        "vida": 35000,
         "tempo": 600,
         "dano_min": 10,
         "dano_max": 30,
         "recompensa_participou": 1,
         "recompensa_top": 3,
         "recompensa_final": 2,
-        "dano_falha": 3,
+        "dano_falha": 6,
+        "agressividade": 1,
+        "agressividade_max": 6,
+        "habilidade": "grito",
+        "dano_habilidade": 14,
     },
 ]
 
@@ -102,6 +118,10 @@ class BossView(discord.ui.View):
         self.mensagem = None
         self.ultimo_hit = None
 
+        self.agressividade = boss.get("agressividade", 1)
+        self.agressividade_max = boss.get("agressividade_max", 5)
+        self.turnos = 0
+
     def barra(self):
         if self.max_vida <= 0:
             return "⬛" * 10
@@ -134,6 +154,7 @@ class BossView(discord.ui.View):
                 f"{self.boss['descricao']}\n\n"
                 f"❤️ **Vida:** `{max(0, self.vida)}/{self.max_vida}`\n"
                 f"{self.barra()}\n\n"
+                f"🔥 **Agressividade:** `{self.agressividade}/{self.agressividade_max}`\n"
                 f"⏳ Tempo limite: **{self.boss['tempo'] // 60} minutos**"
             ),
             color=COR_VERMELHA
@@ -143,6 +164,89 @@ class BossView(discord.ui.View):
         embed.set_image(url=self.boss["imagem"])
         embed.set_footer(text="Família Sant's • Raid Boss")
         return embed
+
+    async def usar_habilidade(self, interaction: discord.Interaction):
+        habilidade = self.boss.get("habilidade")
+        dano = self.boss.get("dano_habilidade", 0) + self.agressividade
+
+        if not habilidade or dano <= 0:
+            return
+
+        if random.randint(1, 100) > 25:
+            return
+
+        jogadores = listar_jogadores_vivos()
+
+        if not jogadores:
+            return
+
+        if habilidade == "corte_area":
+            alvos = random.sample(jogadores, min(3, len(jogadores)))
+            texto = f"🔥 **{self.boss['nome']} usou CORTE EM ÁREA!**\n\n"
+
+            for jogador in alvos:
+                user_id = jogador[0]
+                resultado = remover_vida(user_id, dano)
+
+                if resultado:
+                    vidas = resultado[2]
+                    status = resultado[5]
+                    texto += f"🩸 <@{user_id}> recebeu **-{dano}** dano. ❤️ `{vidas}/{VIDAS_MAXIMAS}`"
+
+                    if status == "eliminado":
+                        texto += " ☠️ **ELIMINADO**"
+
+                    texto += "\n"
+
+            await interaction.followup.send(texto, ephemeral=True)
+
+        elif habilidade == "adaptacao":
+            self.agressividade = min(self.agressividade + 1, self.agressividade_max)
+            self.boss["dano_min"] += 1
+            self.boss["dano_max"] += 2
+
+            await interaction.followup.send(
+                f"⚙️ **Mahoraga se adaptou!**\n"
+                f"🔥 Agressividade atual: **{self.agressividade}/{self.agressividade_max}**",
+                ephemeral=True
+            )
+
+        elif habilidade == "grito":
+            resultado = remover_vida(interaction.user.id, dano)
+
+            if resultado:
+                vidas = resultado[2]
+                await interaction.followup.send(
+                    f"👁️ **Rika soltou um grito amaldiçoado!**\n"
+                    f"🩸 Você recebeu **-{dano}** dano.\n"
+                    f"❤️ Vida: **{vidas}/{VIDAS_MAXIMAS}**",
+                    ephemeral=True
+                )
+
+        elif habilidade == "pacto_eterno":
+            alvos = random.sample(jogadores, min(2, len(jogadores)))
+            self.vida = min(self.vida + 5000, self.max_vida)
+
+            texto = (
+                f"💜 **{self.boss['nome']} ativou PACTO ETERNO!**\n"
+                f"❤️ O boss recuperou **5000** de vida.\n\n"
+            )
+
+            for jogador in alvos:
+                user_id = jogador[0]
+                resultado = remover_vida(user_id, dano)
+
+                if resultado:
+                    vidas = resultado[2]
+                    status = resultado[5]
+                    texto += f"🩸 <@{user_id}> recebeu **-{dano}** dano. ❤️ `{vidas}/{VIDAS_MAXIMAS}`"
+
+                    if status == "eliminado":
+                        texto += " ☠️ **ELIMINADO**"
+
+                    texto += "\n"
+
+            await interaction.followup.send(texto, ephemeral=True)
 
     async def finalizar(self, channel: discord.TextChannel, guild: discord.Guild):
         if not self.danos:
@@ -213,18 +317,19 @@ class BossView(discord.ui.View):
             return
 
         atingidos = random.sample(jogadores, min(3, len(jogadores)))
-
         texto_atingidos = ""
+
+        dano_final = self.boss["dano_falha"] + self.agressividade
 
         for jogador in atingidos:
             user_id = jogador[0]
-            resultado = remover_vida(user_id, self.boss["dano_falha"])
+            resultado = remover_vida(user_id, dano_final)
 
             if resultado:
                 vidas = resultado[2]
                 status = resultado[5]
                 texto_atingidos += (
-                    f"💀 <@{user_id}> perdeu **{self.boss['dano_falha']}** vida(s). "
+                    f"💀 <@{user_id}> perdeu **{dano_final}** vida(s). "
                     f"❤️ `{vidas}/{VIDAS_MAXIMAS}`"
                 )
 
@@ -276,11 +381,31 @@ class BossView(discord.ui.View):
             )
             return
 
+        self.turnos += 1
+
+        if self.turnos % 8 == 0 and self.agressividade < self.agressividade_max:
+            self.agressividade += 1
+
         dano = random.randint(self.boss["dano_min"], self.boss["dano_max"])
+        dano_boss = self.boss["dano_falha"] + self.agressividade
 
         self.vida -= dano
         self.danos[interaction.user.id] = self.danos.get(interaction.user.id, 0) + dano
         self.ultimo_hit = interaction.user.id
+
+        if random.randint(1, 100) <= 30:
+            resultado = remover_vida(interaction.user.id, dano_boss)
+
+            if resultado:
+                vidas = resultado[2]
+                await interaction.followup.send(
+                    f"💢 **{self.boss['nome']} contra-atacou!**\n"
+                    f"🩸 Dano: **-{dano_boss}**\n"
+                    f"❤️ Vida: **{vidas}/{VIDAS_MAXIMAS}**",
+                    ephemeral=True
+                )
+
+        await self.usar_habilidade(interaction)
 
         if self.vida <= 0:
             self.vida = 0
