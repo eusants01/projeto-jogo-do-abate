@@ -47,7 +47,7 @@ MALDICOES = [
     {
         "nome": "Maldição Comum",
         "descricao": "Uma maldição fraca apareceu nas sombras do servidor.",
-        "imagem": "https://media1.tenor.com/m/CBPIO2t4iGEAAAAC/jujutsu-kaisen-jujutsu.gif",
+        "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
         "chance": 60,
         "cargo_id": 123456789012345678,
     },
