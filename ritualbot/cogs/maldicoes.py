@@ -26,21 +26,21 @@ MALDICOES = [
     {
         "nome": "Mahito",
         "descricao": "A alma foi tocada... uma presença distorcida surgiu no domínio.",
-        "imagem": "https://media1.tenor.com/m/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
+        "imagem": "https://media.tenor.com/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
         "chance": 20,
         "cargo_id": 123456789012345678,
     },
     {
         "nome": "Mahoraga",
         "descricao": "A roda começou a girar... adapte-se ou seja destruído.",
-        "imagem": "https://media1.tenor.com/m/1qESUcxlIRMAAAAC/mahoraga-then-shadows.gif",
+        "imagem": "https://media.tenor.com/1qESUcxlIRMAAAAC/mahoraga-then-shadows.gif",
         "chance": 7,
         "cargo_id": 123456789012345678,
     },
     {
         "nome": "Sukuna",
         "descricao": "O Rei das Maldições despertou. O domínio foi aberto.",
-        "imagem": "https://media1.tenor.com/m/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
+        "imagem": "https://media.tenor.com/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
         "chance": 4,
         "cargo_id": 123456789012345678,
     },
@@ -54,7 +54,7 @@ MALDICOES = [
     {
         "nome": "Maldição Especial",
         "descricao": "Uma energia amaldiçoada perigosa tomou conta do ambiente.",
-        "imagem": "https://media1.tenor.com/m/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
+        "imagem": "https://media.tenor.com/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
         "chance": 30,
         "cargo_id": 123456789012345678,
     },
