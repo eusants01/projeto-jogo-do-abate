@@ -102,7 +102,7 @@ MALDICOES = [
     {
         "nome": "Jogo",
         "descricao": "O vulcão despertou... o calor absoluto domina o campo.",
-        "imagem": "https://media.tenor.com/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
+        "imagem": "https://media1.tenor.com/m/e6A9UvvUAAYAAAAd/jogo-jjk-jogo-vs-sukuna.gif",
         "chance": 10,
         "peso_spawn": 10,
         "cargo_id": 123456789012345678,
@@ -113,7 +113,7 @@ MALDICOES = [
     {
         "nome": "Hanami",
         "descricao": "A natureza rejeita a humanidade... raízes tomam o domínio.",
-        "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
+        "imagem": "https://media1.tenor.com/m/zS1MyP8swfQAAAAC/hanami.gif",
         "chance": 12,
         "peso_spawn": 12,
         "cargo_id": 123456789012345678,
@@ -124,7 +124,7 @@ MALDICOES = [
     {
         "nome": "Dagon",
         "descricao": "O mar invadiu o domínio... você está cercado.",
-        "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
+        "imagem": "https://media1.tenor.com/m/gxkA_uWN3GQAAAAd/dagon-curse.gif",
         "chance": 14,
         "peso_spawn": 12,
         "cargo_id": 123456789012345678,
@@ -135,8 +135,8 @@ MALDICOES = [
     {
         "nome": "Choso",
         "descricao": "Sangue amaldiçoado corre pelo campo... o ataque será preciso.",
-        "imagem": "https://media.tenor.com/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
-        "chance": 15,
+        "imagem": "https://media1.tenor.com/m/XSXLrq97c8kAAAAd/jjk-jjk-s2.gif",
+        "chance": 8,
         "peso_spawn": 14,
         "cargo_id": 123456789012345678,
         "bonus_abate": 2,
@@ -146,7 +146,7 @@ MALDICOES = [
     {
         "nome": "Toji",
         "descricao": "Sem energia amaldiçoada... mas mortal.",
-        "imagem": "https://media.tenor.com/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
+        "imagem": "https://media1.tenor.com/m/60y8nfancGwAAAAC/toji-toji-fushiguro.gif",
         "chance": 7,
         "peso_spawn": 5,
         "cargo_id": 123456789012345678,
@@ -157,7 +157,7 @@ MALDICOES = [
     {
         "nome": "Rika",
         "descricao": "O amor distorcido tomou forma... uma presença esmagadora apareceu.",
-        "imagem": "https://media.tenor.com/3gqzv7Qy7ZcAAAAC/rika-jujutsu-kaisen.gif",
+        "imagem": "https://media1.tenor.com/m/jGK15SgGTacAAAAC/rika-rika-orimoto.gif",
         "chance": 4,
         "peso_spawn": 4,
         "cargo_id": 123456789012345678,
