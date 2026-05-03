@@ -102,7 +102,7 @@ MALDICOES = [
     {
         "nome": "Jogo",
         "descricao": "O vulcão despertou... o calor absoluto domina o campo.",
-        "imagem": "https://tenor.com/view/jogo-jjk-jogo-vs-sukuna-jogo-jjk-jujutsu-kaisen-gif-8908187489560428550",
+        "imagem": "https://media1.tenor.com/m/e6A9UvvUAAYAAAAd/jogo-jjk-jogo-vs-sukuna.gif",
         "chance": 10,
         "peso_spawn": 10,
         "cargo_id": 123456789012345678,
@@ -113,7 +113,7 @@ MALDICOES = [
     {
         "nome": "Hanami",
         "descricao": "A natureza rejeita a humanidade... raízes tomam o domínio.",
-        "imagem": "https://tenor.com/view/jujutsu-kaisen-jujutsu-kaisen-anime-fight-gif-20475878",
+        "imagem": "https://media1.tenor.com/m/_xW7g0dKQ7sAAAAC/jujutsu-kaisen-fight.gif",
         "chance": 12,
         "peso_spawn": 12,
         "cargo_id": 123456789012345678,
@@ -124,7 +124,7 @@ MALDICOES = [
     {
         "nome": "Dagon",
         "descricao": "O mar invadiu o domínio... você está cercado.",
-        "imagem": "https://tenor.com/view/dagon-evolution-jujutsu-kaisen-shibuya-cursed-womb-dontdox-gif-9030244906923355672",
+        "imagem": "https://media1.tenor.com/m/gxkA_uWN3GQAAAAd/dagon-curse.gif",
         "chance": 14,
         "peso_spawn": 12,
         "cargo_id": 123456789012345678,
@@ -135,7 +135,7 @@ MALDICOES = [
     {
         "nome": "Choso",
         "descricao": "Sangue amaldiçoado corre pelo campo... o ataque será preciso.",
-        "imagem": "https://tenor.com/view/jjk-jjk-s2-jjk-season-2-jujutsu-kaisen-jujutsu-kaisen-season-2-gif-6711994770794443721",
+        "imagem": "https://media1.tenor.com/m/XSXLrq97c8kAAAAd/jjk-jjk-s2.gif",
         "chance": 8,
         "peso_spawn": 14,
         "cargo_id": 123456789012345678,
@@ -146,7 +146,7 @@ MALDICOES = [
     {
         "nome": "Toji",
         "descricao": "Sem energia amaldiçoada... mas mortal.",
-        "imagem": "https://tenor.com/view/toji-manga-toji-loser-zenin-loser-loser-zenin-manga-gif-11436452439985980204",
+        "imagem": "https://media1.tenor.com/m/8bLr6V2w8xQAAAAC/toji-fushiguro-manga.gif",
         "chance": 7,
         "peso_spawn": 5,
         "cargo_id": 123456789012345678,
@@ -157,7 +157,7 @@ MALDICOES = [
     {
         "nome": "Rika",
         "descricao": "O amor distorcido tomou forma... uma presença esmagadora apareceu.",
-        "imagem": "https://tenor.com/view/rika-rika-orimoto-jujutsu-kaisen-jujutsu-kaisen-season-3-jjk-gif-10115847708851195303",
+        "imagem": "https://media1.tenor.com/m/2oXg1R8l3L0AAAAC/rika-orimoto-jjk.gif",
         "chance": 4,
         "peso_spawn": 4,
         "cargo_id": 123456789012345678,
