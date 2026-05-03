@@ -16,6 +16,8 @@ COR_ROXA_JUJUTSU = 0x6A00FF
 COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
 
+GUILD_ID = 1480334256763961465
+
 CANAL_MALDICOES_ID = 1499600179244830730
 CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
@@ -567,6 +569,7 @@ class Maldicoes(commands.Cog):
         name="ranking_exorcistas",
         description="Mostra o ranking dos maiores exorcistas do servidor."
     )
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def ranking_exorcistas(self, interaction: discord.Interaction):
         ranking = pegar_ranking(10)
 
