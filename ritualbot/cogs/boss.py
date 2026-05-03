@@ -20,7 +20,7 @@ BOSSES = [
     {
         "nome": "Sukuna",
         "descricao": "O Rei das Maldições abriu seu domínio.",
-        "imagem": "https://media1.tenor.com/m/YF2hKX9k0gYAAAAd/sukuna-fuga-jjk.gif",
+        "imagem": "https://c.tenor.com/w3KbwTJ-F5IAAAAd/tenor.gif",
         "vida": 500,
         "tempo": 600,
         "dano_min": 15,
@@ -33,7 +33,7 @@ BOSSES = [
     {
         "nome": "Mahoraga",
         "descricao": "A roda gira. A adaptação começou.",
-        "imagem": "https://media1.tenor.com/m/0S7G3YyYz5kAAAAC/megumi-mahoraga-ritual.gif",
+        "imagem": "https://c.tenor.com/mS_lFC5waJcAAAAC/tenor.gif",
         "vida": 400,
         "tempo": 600,
         "dano_min": 10,
@@ -46,7 +46,7 @@ BOSSES = [
     {
         "nome": "Rika",
         "descricao": "Uma força esmagadora apareceu.",
-        "imagem": "https://media1.tenor.com/m/7sC1pV3G1T8AAAAC/rika-orimoto-yuta.gif",
+        "imagem": "https://c.tenor.com/7z8vSgeTDq0AAAAd/tenor.gif",
         "vida": 350,
         "tempo": 600,
         "dano_min": 10,
