@@ -305,6 +305,30 @@ class Maldicoes(commands.Cog):
         if self.tarefa_maldicoes:
             self.tarefa_maldicoes.cancel()
 
+    async def enviar_maldicao(self, canal, manual=False):
+        maldicao = random.choice(MALDICOES)
+
+        extra = "⚠️ Invocada manualmente." if manual else "⏳ Essa maldição ficará ativa por **5 minutos**."
+
+        embed = discord.Embed(
+            title=f"💀 {maldicao['nome']} apareceu!",
+            description=(
+                f"{maldicao['descricao']}\n\n"
+                f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
+                f"🎲 Chance de vitória: **{maldicao['chance']}%**\n\n"
+                f"{extra}"
+            ),
+            color=COR_ROXA_JUJUTSU
+        )
+
+        embed.set_image(url=maldicao["imagem"])
+        embed.set_footer(text="Família Sant's • Maldições Aleatórias")
+
+        await canal.send(
+            embed=embed,
+            view=BotaoExorcizar(maldicao)
+        )
+
     async def sistema_maldicoes(self):
         await self.bot.wait_until_ready()
 
@@ -317,26 +341,19 @@ class Maldicoes(commands.Cog):
             if not canal:
                 continue
 
-            maldicao = random.choice(MALDICOES)
+            await self.enviar_maldicao(canal)
 
-            embed = discord.Embed(
-                title=f"💀 {maldicao['nome']} apareceu!",
-                description=(
-                    f"{maldicao['descricao']}\n\n"
-                    f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
-                    f"🎲 Chance de vitória: **{maldicao['chance']}%**\n\n"
-                    f"⏳ Essa maldição ficará ativa por **5 minutos**."
-                ),
-                color=COR_ROXA_JUJUTSU
-            )
+    @commands.command(name="maldicao")
+    @commands.has_permissions(administrator=True)
+    async def spawn_maldicao(self, ctx):
+        await self.enviar_maldicao(ctx.channel, manual=True)
 
-            embed.set_image(url=maldicao["imagem"])
-            embed.set_footer(text="Família Sant's • Maldições Aleatórias")
-
-            await canal.send(
-                embed=embed,
-                view=BotaoExorcizar(maldicao)
-            )
+    @spawn_maldicao.error
+    async def spawn_maldicao_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.reply("❌ Apenas administradores podem invocar uma maldição.")
+        else:
+            await ctx.reply("⚠️ Ocorreu um erro ao invocar a maldição.")
 
     @app_commands.command(
         name="ranking_exorcistas",
