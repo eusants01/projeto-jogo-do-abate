@@ -45,61 +45,128 @@ CARGOS_PROGRESSAO = [
 
 MALDICOES = [
     {
-        "nome": "Mahito",
-        "descricao": "A alma foi tocada... uma presença distorcida surgiu no domínio.",
-        "imagem": "https://media.tenor.com/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
-        "chance": 20,
-        "cargo_id": 123456789012345678,
-        "rara": False,
-        "bonus_abate": 1,
-        "dano_falha": 2,
-        "dano_expiracao": 2,
-    },
-    {
-        "nome": "Mahoraga",
-        "descricao": "A roda começou a girar... adapte-se ou seja destruído.",
-        "imagem": "https://media.tenor.com/1qESUcxlIRMAAAAC/mahoraga-then-shadows.gif",
-        "chance": 6,
-        "cargo_id": 123456789012345678,
-        "rara": True,
-        "bonus_abate": 2,
-        "dano_falha": 3,
-        "dano_expiracao": 4,
-    },
-    {
-        "nome": "Sukuna",
-        "descricao": "O Rei das Maldições despertou. O domínio foi aberto.",
-        "imagem": "https://media.tenor.com/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
-        "chance": 3,
-        "cargo_id": 123456789012345678,
-        "rara": True,
-        "bonus_abate": 3,
-        "dano_falha": 5,
-        "dano_expiracao": 6,
-    },
-    {
         "nome": "Maldição Comum",
         "descricao": "Uma maldição fraca apareceu nas sombras do servidor.",
         "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
-        "chance": 60,
+        "chance": 35,
+        "peso_spawn": 35,
         "cargo_id": 123456789012345678,
-        "rara": False,
         "bonus_abate": 0,
-        "dano_falha": 0,
+        "dano_falha": 1,
         "dano_expiracao": 1,
     },
     {
         "nome": "Maldição Especial",
         "descricao": "Uma energia amaldiçoada perigosa tomou conta do ambiente.",
         "imagem": "https://media.tenor.com/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
-        "chance": 30,
+        "chance": 20,
+        "peso_spawn": 25,
         "cargo_id": 123456789012345678,
-        "rara": False,
         "bonus_abate": 1,
-        "dano_falha": 1,
+        "dano_falha": 2,
         "dano_expiracao": 2,
     },
+    {
+        "nome": "Mahito",
+        "descricao": "A alma foi tocada... uma presença distorcida surgiu no domínio.",
+        "imagem": "https://media.tenor.com/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
+        "chance": 12,
+        "peso_spawn": 14,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 2,
+        "dano_falha": 3,
+        "dano_expiracao": 3,
+    },
+    {
+        "nome": "Mahoraga",
+        "descricao": "A roda começou a girar... adapte-se ou seja destruído.",
+        "imagem": "https://media.tenor.com/1qESUcxlIRMAAAAC/mahoraga-then-shadows.gif",
+        "chance": 5,
+        "peso_spawn": 6,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 3,
+        "dano_falha": 5,
+        "dano_expiracao": 6,
+    },
+    {
+        "nome": "Sukuna",
+        "descricao": "O Rei das Maldições despertou. O domínio foi aberto.",
+        "imagem": "https://media.tenor.com/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
+        "chance": 2,
+        "peso_spawn": 3,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 5,
+        "dano_falha": 7,
+        "dano_expiracao": 8,
+    },
+    {
+        "nome": "Jogo",
+        "descricao": "O vulcão despertou... o calor absoluto domina o campo.",
+        "imagem": "https://media.tenor.com/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
+        "chance": 10,
+        "peso_spawn": 10,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 2,
+        "dano_falha": 4,
+        "dano_expiracao": 4,
+    },
+    {
+        "nome": "Hanami",
+        "descricao": "A natureza rejeita a humanidade... raízes tomam o domínio.",
+        "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
+        "chance": 12,
+        "peso_spawn": 12,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 2,
+        "dano_falha": 3,
+        "dano_expiracao": 3,
+    },
+    {
+        "nome": "Dagon",
+        "descricao": "O mar invadiu o domínio... você está cercado.",
+        "imagem": "https://media.tenor.com/0Vr8KlT2j1kAAAAd/jujutsu-kaisen.gif",
+        "chance": 14,
+        "peso_spawn": 12,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 2,
+        "dano_falha": 3,
+        "dano_expiracao": 3,
+    },
+    {
+        "nome": "Choso",
+        "descricao": "Sangue amaldiçoado corre pelo campo... o ataque será preciso.",
+        "imagem": "https://media.tenor.com/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
+        "chance": 15,
+        "peso_spawn": 14,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 2,
+        "dano_falha": 2,
+        "dano_expiracao": 2,
+    },
+    {
+        "nome": "Toji",
+        "descricao": "Sem energia amaldiçoada... mas mortal.",
+        "imagem": "https://media.tenor.com/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
+        "chance": 7,
+        "peso_spawn": 5,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 3,
+        "dano_falha": 5,
+        "dano_expiracao": 5,
+    },
+    {
+        "nome": "Rika",
+        "descricao": "O amor distorcido tomou forma... uma presença esmagadora apareceu.",
+        "imagem": "https://media.tenor.com/3gqzv7Qy7ZcAAAAC/rika-jujutsu-kaisen.gif",
+        "chance": 4,
+        "peso_spawn": 4,
+        "cargo_id": 123456789012345678,
+        "bonus_abate": 5,
+        "dano_falha": 6,
+        "dano_expiracao": 7,
+},
 ]
+
 
 
 def criar_tabela_maldicoes():
@@ -174,12 +241,8 @@ def pegar_proximo_rank(vitorias: int):
 
 
 def escolher_maldicao():
-    if random.randint(1, 100) <= 12:
-        raras = [m for m in MALDICOES if m.get("rara")]
-        return random.choice(raras)
-
-    comuns = [m for m in MALDICOES if not m.get("rara")]
-    return random.choice(comuns)
+    pesos = [m.get("peso_spawn", 1) for m in MALDICOES]
+    return random.choices(MALDICOES, weights=pesos, k=1)[0]
 
 
 def buscar_maldicao_por_nome(nome: str):
@@ -368,7 +431,7 @@ class BotaoExorcizar(discord.ui.View):
             print(f"[ERRO LOG ATAQUE MALDIÇÃO] {e}")
 
     async def remover_cooldown(self, user_id: int):
-        await asyncio.sleep(5)
+        await asyncio.sleep(8)
         self.cooldown.discard(user_id)
 
     @discord.ui.button(
@@ -579,7 +642,9 @@ class Maldicoes(commands.Cog):
             description=(
                 f"{maldicao['descricao']}\n\n"
                 f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
-                f"🎲 Chance de vitória: **{maldicao['chance']}%**\n\n"
+                f"🎲 Chance de vitória: **{maldicao['chance']}%**\n"
+                f"🩸 Dano ao falhar: **-{maldicao.get('dano_falha', 0)} vida(s)**\n"
+                f"🌑 Dano se ninguém derrotar: **-{maldicao.get('dano_expiracao', 0)} vida(s)**\n\n"
                 f"{extra}"
             ),
             color=COR_ROXA_JUJUTSU
