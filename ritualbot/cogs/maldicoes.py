@@ -6,22 +6,29 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+from utils.db import (
+    buscar_jogador,
+    adicionar_abate,
+    remover_vida,
+)
+
 COR_ROXA_JUJUTSU = 0x6A00FF
+COR_VERMELHA = 0xE63946
+COR_VERDE = 0x2ECC71
 
 CANAL_MALDICOES_ID = 1499600179244830730
 CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
-# Tempo normal
-TEMPO_MINIMO = 600      # 10 minutos
-TEMPO_MAXIMO = 2700     # 45 minutos
+TEMPO_MINIMO = 600
+TEMPO_MAXIMO = 2700
 
-# Tempo de madrugada
-TEMPO_MADRUGADA_MIN = 300    # 5 minutos
-TEMPO_MADRUGADA_MAX = 1200   # 20 minutos
+TEMPO_MADRUGADA_MIN = 300
+TEMPO_MADRUGADA_MAX = 1200
 
-TEMPO_EXPIRACAO = 300  # 5 minutos
+TEMPO_EXPIRACAO = 300
+TEMPO_DELETAR_FALHA = 8
 
 CARGOS_PROGRESSAO = [
     (50, 1500547442003673220),
@@ -38,6 +45,8 @@ MALDICOES = [
         "chance": 20,
         "cargo_id": 123456789012345678,
         "rara": False,
+        "bonus_abate": 1,
+        "dano_falha": 0,
     },
     {
         "nome": "Mahoraga",
@@ -46,6 +55,8 @@ MALDICOES = [
         "chance": 6,
         "cargo_id": 123456789012345678,
         "rara": True,
+        "bonus_abate": 2,
+        "dano_falha": 1,
     },
     {
         "nome": "Sukuna",
@@ -54,6 +65,8 @@ MALDICOES = [
         "chance": 3,
         "cargo_id": 123456789012345678,
         "rara": True,
+        "bonus_abate": 3,
+        "dano_falha": 1,
     },
     {
         "nome": "Maldição Comum",
@@ -62,6 +75,8 @@ MALDICOES = [
         "chance": 60,
         "cargo_id": 123456789012345678,
         "rara": False,
+        "bonus_abate": 0,
+        "dano_falha": 0,
     },
     {
         "nome": "Maldição Especial",
@@ -70,6 +85,8 @@ MALDICOES = [
         "chance": 30,
         "cargo_id": 123456789012345678,
         "rara": False,
+        "bonus_abate": 1,
+        "dano_falha": 0,
     },
 ]
 
@@ -146,7 +163,6 @@ def pegar_proximo_rank(vitorias: int):
 
 
 def escolher_maldicao():
-    # 12% de chance de aparecer maldição rara
     if random.randint(1, 100) <= 12:
         raras = [m for m in MALDICOES if m.get("rara")]
         return random.choice(raras)
@@ -202,6 +218,44 @@ async def atualizar_cargo_progressao(member: discord.Member):
     return None
 
 
+def aplicar_bonus_abate(user_id: int, quantidade: int):
+    if quantidade <= 0:
+        return False
+
+    jogador = buscar_jogador(user_id)
+
+    if not jogador:
+        return False
+
+    adicionar_abate(user_id, quantidade=quantidade)
+    return True
+
+
+def aplicar_dano_abate(user_id: int, quantidade: int):
+    if quantidade <= 0:
+        return None
+
+    jogador = buscar_jogador(user_id)
+
+    if not jogador:
+        return None
+
+    return remover_vida(user_id, quantidade=quantidade)
+
+
+async def deletar_depois(mensagem: discord.Message, segundos: int):
+    await asyncio.sleep(segundos)
+
+    try:
+        await mensagem.delete()
+    except discord.NotFound:
+        pass
+    except discord.Forbidden:
+        pass
+    except discord.HTTPException:
+        pass
+
+
 class BotaoExorcizar(discord.ui.View):
     def __init__(self, maldicao):
         super().__init__(timeout=TEMPO_EXPIRACAO)
@@ -222,7 +276,8 @@ class BotaoExorcizar(discord.ui.View):
                 await self.mensagem.edit(view=self)
                 await self.mensagem.channel.send(
                     f"🌑 **{self.maldicao['nome']} desapareceu nas sombras...**\n"
-                    f"Ninguém conseguiu exorcizá-la a tempo."
+                    f"Ninguém conseguiu exorcizá-la a tempo.",
+                    delete_after=15
                 )
             except Exception as e:
                 print(f"[ERRO AO EXPIRAR MALDIÇÃO] {e}")
@@ -283,6 +338,9 @@ class BotaoExorcizar(discord.ui.View):
                 )
                 return
 
+            bonus = self.maldicao.get("bonus_abate", 0)
+            bonus_aplicado = aplicar_bonus_abate(interaction.user.id, bonus)
+
             for item in self.children:
                 item.disabled = True
 
@@ -297,6 +355,12 @@ class BotaoExorcizar(discord.ui.View):
 
             if cargo_maldicao:
                 mensagem += f"\n🎖️ Cargo recebido: {cargo_maldicao.mention}"
+
+            if bonus > 0:
+                if bonus_aplicado:
+                    mensagem += f"\n🩸 **Jogo do Abate:** +{bonus} ponto(s) de abate."
+                else:
+                    mensagem += "\n🩸 **Jogo do Abate:** bônus não aplicado, pois você não está registrado no ritual."
 
             if cargo_progressao:
                 mensagem += (
@@ -332,13 +396,24 @@ class BotaoExorcizar(discord.ui.View):
                         f"🎲 Chance: **{self.maldicao['chance']}%**\n"
                         f"🏆 Total de vitórias: **{vitorias}**"
                     ),
-                    color=COR_ROXA_JUJUTSU
+                    color=COR_VERDE
                 )
 
                 if cargo_maldicao:
                     embed_log.add_field(
                         name="🎖️ Cargo da Maldição",
                         value=cargo_maldicao.mention,
+                        inline=False
+                    )
+
+                if bonus > 0:
+                    embed_log.add_field(
+                        name="🩸 Integração com Abate",
+                        value=(
+                            f"+{bonus} ponto(s) de abate aplicado(s)."
+                            if bonus_aplicado
+                            else "Jogador não registrado no Jogo do Abate."
+                        ),
                         inline=False
                     )
 
@@ -353,10 +428,38 @@ class BotaoExorcizar(discord.ui.View):
                 await canal_log.send(embed=embed_log)
 
         else:
+            dano = self.maldicao.get("dano_falha", 0)
+            jogador_afetado = aplicar_dano_abate(interaction.user.id, dano)
+
+            texto_falha = (
+                f"❌ {interaction.user.mention} tentou exorcizar **{self.maldicao['nome']}**, mas falhou..."
+            )
+
+            if dano > 0:
+                if jogador_afetado:
+                    vidas = jogador_afetado[2]
+                    status = jogador_afetado[5]
+
+                    texto_falha += (
+                        f"\n🩸 **Jogo do Abate:** você perdeu **{dano} vida**."
+                        f"\n❤️ Vidas restantes: **{vidas}/3**"
+                    )
+
+                    if status == "eliminado":
+                        texto_falha += "\n💀 Você foi eliminado do ritual."
+                else:
+                    texto_falha += "\n🩸 Você não está registrado no Jogo do Abate, então não perdeu vida."
+
             await interaction.response.send_message(
-                f"❌ {interaction.user.mention} tentou exorcizar **{self.maldicao['nome']}**, mas falhou...",
+                texto_falha,
                 ephemeral=False
             )
+
+            try:
+                msg = await interaction.original_response()
+                asyncio.create_task(deletar_depois(msg, TEMPO_DELETAR_FALHA))
+            except Exception:
+                pass
 
 
 class Maldicoes(commands.Cog):
@@ -408,8 +511,7 @@ class Maldicoes(commands.Cog):
         await self.bot.wait_until_ready()
 
         while not self.bot.is_closed():
-            agora = datetime.datetime.now()
-            hora = agora.hour
+            hora = datetime.datetime.now().hour
 
             if 0 <= hora <= 5:
                 tempo = random.randint(TEMPO_MADRUGADA_MIN, TEMPO_MADRUGADA_MAX)
@@ -432,14 +534,19 @@ class Maldicoes(commands.Cog):
     @commands.command(name="maldicao")
     @commands.has_permissions(administrator=True)
     async def spawn_maldicao(self, ctx, *, nome: str = None):
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
         if nome:
             maldicao = buscar_maldicao_por_nome(nome)
 
             if not maldicao:
                 nomes = ", ".join([m["nome"] for m in MALDICOES])
-                await ctx.reply(
-                    f"❌ Maldição não encontrada.\n"
-                    f"Use uma dessas: `{nomes}`"
+                await ctx.send(
+                    f"❌ Maldição não encontrada.\nUse uma dessas: `{nomes}`",
+                    delete_after=10
                 )
                 return
 
@@ -451,9 +558,9 @@ class Maldicoes(commands.Cog):
     @spawn_maldicao.error
     async def spawn_maldicao_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
-            await ctx.reply("❌ Apenas administradores podem invocar uma maldição.")
+            await ctx.reply("❌ Apenas administradores podem invocar uma maldição.", delete_after=8)
         else:
-            await ctx.reply("⚠️ Ocorreu um erro ao invocar a maldição.")
+            await ctx.reply("⚠️ Ocorreu um erro ao invocar a maldição.", delete_after=8)
             print(f"[ERRO COMANDO MALDIÇÃO] {error}")
 
     @app_commands.command(
