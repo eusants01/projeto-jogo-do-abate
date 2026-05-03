@@ -20,6 +20,10 @@ from utils.db import (
     buscar_evento_ativo,
 )
 
+# =========================
+# CONFIGURAÇÕES
+# =========================
+
 COR_ROXA = 0x7B2CFF
 COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
@@ -27,7 +31,23 @@ COR_DOURADA = 0xF1C40F
 
 GUILD_ID = 1480334256763961465
 
-BANNER_URL = ""
+# 📢 Canal onde os comandos do Jogo do Abate podem ser usados
+CANAL_ABATE_ID = 1500151299209957376
+
+# 📜 Canal de logs automáticos
+# TROQUE PELO ID REAL DO SEU CANAL logs-abate
+CANAL_LOGS_ID = 1500386205160833115
+
+# 💀 Canal de anúncios/eventos
+# TROQUE PELO ID REAL DO SEU CANAL eventos-abate
+CANAL_EVENTOS_ID = 1500386762210672680
+
+# Opcional: coloque aqui o link direto do banner hospedado
+BANNER_URL = "https://i.imgur.com/28Oo2ln.png"
+
+
+def canal_valido(interaction: discord.Interaction):
+    return interaction.channel_id == CANAL_ABATE_ID
 
 
 def avatar_bot(bot: commands.Bot):
@@ -57,15 +77,28 @@ def embaralhar_alvos(jogadores):
 
     alvos = ids.copy()
 
-    # garante que ninguém caia com ele mesmo
     for _ in range(50):
         random.shuffle(alvos)
         if all(jogador_id != alvo_id for jogador_id, alvo_id in zip(ids, alvos)):
             return dict(zip(ids, alvos))
 
-    # fallback circular
     alvos = ids[1:] + ids[:1]
     return dict(zip(ids, alvos))
+
+
+async def enviar_log(guild: discord.Guild, embed: discord.Embed):
+    canal = guild.get_channel(CANAL_LOGS_ID)
+    if canal:
+        await canal.send(embed=embed)
+
+
+async def anunciar_evento(guild: discord.Guild, embed: discord.Embed | None = None, mensagem: str | None = None):
+    canal = guild.get_channel(CANAL_EVENTOS_ID)
+    if canal:
+        if embed:
+            await canal.send(embed=embed)
+        elif mensagem:
+            await canal.send(mensagem)
 
 
 class PainelAbate(discord.ui.View):
@@ -80,6 +113,13 @@ class PainelAbate(discord.ui.View):
         custom_id="abate_entrar"
     )
     async def entrar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not canal_valido(interaction):
+            await interaction.response.send_message(
+                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
+                ephemeral=True
+            )
+            return
+
         jogador_existente = buscar_jogador(interaction.user.id)
 
         if jogador_existente:
@@ -113,6 +153,14 @@ class PainelAbate(discord.ui.View):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+        log = discord.Embed(
+            title="📜 NOVO PARTICIPANTE",
+            description=f"{interaction.user.mention} entrou no **Jogo do Abate**.",
+            color=COR_VERDE
+        )
+        log.set_thumbnail(url=interaction.user.display_avatar.url)
+        await enviar_log(interaction.guild, log)
+
     @discord.ui.button(
         label="Meu Registro",
         emoji="👁️",
@@ -120,6 +168,13 @@ class PainelAbate(discord.ui.View):
         custom_id="abate_perfil"
     )
     async def perfil(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not canal_valido(interaction):
+            await interaction.response.send_message(
+                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
+                ephemeral=True
+            )
+            return
+
         jogador = buscar_jogador(interaction.user.id)
 
         if not jogador:
@@ -168,6 +223,13 @@ class PainelAbate(discord.ui.View):
         custom_id="abate_ranking"
     )
     async def ranking(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not canal_valido(interaction):
+            await interaction.response.send_message(
+                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
+                ephemeral=True
+            )
+            return
+
         jogadores = listar_ranking()
 
         if not jogadores:
@@ -202,6 +264,13 @@ class PainelAbate(discord.ui.View):
         custom_id="abate_regras"
     )
     async def regras(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not canal_valido(interaction):
+            await interaction.response.send_message(
+                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
+                ephemeral=True
+            )
+            return
+
         embed = discord.Embed(
             title="📜 REGULAMENTO DO RITUAL",
             description=(
@@ -231,6 +300,13 @@ class PainelAbate(discord.ui.View):
         custom_id="abate_status"
     )
     async def status_ritual(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not canal_valido(interaction):
+            await interaction.response.send_message(
+                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
+                ephemeral=True
+            )
+            return
+
         jogadores = listar_jogadores_vivos()
         evento = buscar_evento_ativo()
 
@@ -253,11 +329,26 @@ class Abate(commands.Cog):
         self.bot = bot
         self.bot.add_view(PainelAbate(bot))
 
+    async def cog_app_command_error(self, interaction: discord.Interaction, error):
+        if isinstance(error, app_commands.CheckFailure):
+            mensagem = "🚫 Use este comando apenas no canal do **Jogo do Abate** ou verifique suas permissões."
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(mensagem, ephemeral=True)
+                else:
+                    await interaction.response.send_message(mensagem, ephemeral=True)
+            except Exception:
+                pass
+            return
+
+        raise error
+
     @app_commands.command(
         name="painel_abate",
         description="Envia o painel principal do Jogo do Abate."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def painel_abate(self, interaction: discord.Interaction):
         embed = discord.Embed(
@@ -298,6 +389,7 @@ class Abate(commands.Cog):
         description="Sorteia alvos secretos entre todos os jogadores vivos e envia por DM."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def sortear_alvos(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -356,11 +448,34 @@ class Abate(commands.Cog):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+        anuncio = discord.Embed(
+            title="🎯 NOVOS ALVOS DEFINIDOS",
+            description=(
+                "Os alvos secretos foram sorteados.\n\n"
+                "Verifique sua DM.\n"
+                "> O plano depende do silêncio."
+            ),
+            color=COR_ROXA
+        )
+        await anunciar_evento(interaction.guild, embed=anuncio)
+
+        log = discord.Embed(
+            title="📜 LOG — ALVOS SORTEADOS",
+            description=(
+                f"✅ DMs enviadas: **{enviados}**\n"
+                f"⚠️ Falhas: **{falhas}**\n"
+                f"👤 Responsável: {interaction.user.mention}"
+            ),
+            color=COR_VERDE
+        )
+        await enviar_log(interaction.guild, log)
+
     @app_commands.command(
         name="limpar_alvos",
         description="Remove todos os alvos atuais dos jogadores."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def limpar_alvos_cmd(self, interaction: discord.Interaction):
         limpar_alvos()
@@ -370,11 +485,19 @@ class Abate(commands.Cog):
             ephemeral=True
         )
 
+        log = discord.Embed(
+            title="📜 LOG — ALVOS LIMPOS",
+            description=f"Todos os alvos foram removidos por {interaction.user.mention}.",
+            color=COR_ROXA
+        )
+        await enviar_log(interaction.guild, log)
+
     @app_commands.command(
         name="meu_alvo",
         description="Mostra seu alvo secreto atual."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     async def meu_alvo(self, interaction: discord.Interaction):
         jogador = buscar_jogador(interaction.user.id)
 
@@ -415,6 +538,7 @@ class Abate(commands.Cog):
         description="Cria um evento especial para o Jogo do Abate."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def criar_evento_abate(
         self,
@@ -440,11 +564,24 @@ class Abate(commands.Cog):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+        log = discord.Embed(
+            title="📜 LOG — EVENTO CRIADO",
+            description=(
+                f"**Nome:** {nome}\n"
+                f"**Multiplicador:** x{multiplicador_abate}\n"
+                f"**Dano extra:** +{dano_extra}\n"
+                f"**Criado por:** {interaction.user.mention}"
+            ),
+            color=COR_ROXA
+        )
+        await enviar_log(interaction.guild, log)
+
     @app_commands.command(
         name="listar_eventos_abate",
         description="Lista os eventos especiais criados."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def listar_eventos_abate(self, interaction: discord.Interaction):
         eventos = listar_eventos()
@@ -477,6 +614,7 @@ class Abate(commands.Cog):
         description="Ativa um evento especial pelo ID."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def ativar_evento_abate(self, interaction: discord.Interaction, evento_id: int):
         ativar_evento(evento_id)
@@ -501,12 +639,25 @@ class Abate(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+        await anunciar_evento(interaction.guild, embed=embed)
+
+        log = discord.Embed(
+            title="📜 LOG — EVENTO ATIVADO",
+            description=(
+                f"**Evento:** {nome}\n"
+                f"**ID:** {evento_id}\n"
+                f"**Ativado por:** {interaction.user.mention}"
+            ),
+            color=COR_VERMELHA
+        )
+        await enviar_log(interaction.guild, log)
 
     @app_commands.command(
         name="encerrar_evento_abate",
         description="Encerra qualquer evento especial ativo."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def encerrar_evento_abate(self, interaction: discord.Interaction):
         encerrar_eventos()
@@ -518,12 +669,21 @@ class Abate(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+        await anunciar_evento(interaction.guild, embed=embed)
+
+        log = discord.Embed(
+            title="📜 LOG — EVENTO ENCERRADO",
+            description=f"Evento encerrado por {interaction.user.mention}.",
+            color=COR_ROXA
+        )
+        await enviar_log(interaction.guild, log)
 
     @app_commands.command(
         name="registrar_abate",
         description="Registra um abate e remove vida do perdedor."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def registrar_abate_cmd(
         self,
@@ -597,11 +757,53 @@ class Abate(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+        log = discord.Embed(
+            title="📜 LOG — ABATE REGISTRADO",
+            description=(
+                f"🏆 **Vencedor:** {vencedor.mention}\n"
+                f"🩸 **Perdedor:** {perdedor.mention}\n"
+                f"📌 **Motivo:** {motivo}\n"
+                f"⚔️ **Abates recebidos:** +{multiplicador}\n"
+                f"🩸 **Dano aplicado:** -{dano_total}\n"
+                f"❤️ **Vidas restantes:** {vidas}\n"
+                f"👤 **Registrado por:** {interaction.user.mention}"
+            ),
+            color=COR_VERDE
+        )
+
+        if era_alvo:
+            log.add_field(
+                name="🎯 Alvo secreto concluído",
+                value=f"{vencedor.mention} concluiu o alvo contra {perdedor.mention}.",
+                inline=False
+            )
+
+        if status == "eliminado":
+            log.add_field(
+                name="💀 Eliminação",
+                value=f"{perdedor.mention} foi eliminado do ritual.",
+                inline=False
+            )
+
+            anuncio_eliminacao = discord.Embed(
+                title="💀 ELIMINAÇÃO CONFIRMADA",
+                description=(
+                    f"{perdedor.mention} foi eliminado do **Jogo do Abate**.\n\n"
+                    "> O ritual cobrou seu preço."
+                ),
+                color=COR_VERMELHA
+            )
+            anuncio_eliminacao.set_thumbnail(url=perdedor.display_avatar.url)
+            await anunciar_evento(interaction.guild, embed=anuncio_eliminacao)
+
+        await enviar_log(interaction.guild, log)
+
     @app_commands.command(
         name="ranking_abate",
         description="Mostra o ranking geral do Jogo do Abate."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     async def ranking_abate(self, interaction: discord.Interaction):
         jogadores = listar_ranking()
 
@@ -634,6 +836,7 @@ class Abate(commands.Cog):
         description="Reseta todos os dados do Jogo do Abate."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
+    @app_commands.check(canal_valido)
     @app_commands.checks.has_permissions(administrator=True)
     async def resetar_abate_cmd(self, interaction: discord.Interaction):
         resetar_jogo()
@@ -645,6 +848,13 @@ class Abate(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        log = discord.Embed(
+            title="📜 LOG — RITUAL RESETADO",
+            description=f"O Jogo do Abate foi resetado por {interaction.user.mention}.",
+            color=COR_VERMELHA
+        )
+        await enviar_log(interaction.guild, log)
 
 
 async def setup(bot: commands.Bot):
