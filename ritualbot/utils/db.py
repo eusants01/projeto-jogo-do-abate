@@ -3,6 +3,8 @@ from pathlib import Path
 
 DB_PATH = Path("ritualbot.db")
 
+VIDAS_MAXIMAS = 20  # 🔥 NOVO PADRÃO
+
 
 def conectar():
     return sqlite3.connect(DB_PATH)
@@ -12,11 +14,11 @@ def criar_tabelas():
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(f"""
     CREATE TABLE IF NOT EXISTS jogadores (
         user_id INTEGER PRIMARY KEY,
         username TEXT NOT NULL,
-        vidas INTEGER DEFAULT 3,
+        vidas INTEGER DEFAULT {VIDAS_MAXIMAS},
         abates INTEGER DEFAULT 0,
         contratos INTEGER DEFAULT 0,
         status TEXT DEFAULT 'vivo',
@@ -40,16 +42,17 @@ def criar_tabelas():
     conn.close()
 
 
+# 🔥 GARANTE VIDA 20 AO ENTRAR
 def registrar_jogador(user_id: int, username: str):
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        INSERT OR IGNORE INTO jogadores (user_id, username)
-        VALUES (?, ?)
+        INSERT OR IGNORE INTO jogadores (user_id, username, vidas)
+        VALUES (?, ?, ?)
         """,
-        (user_id, username)
+        (user_id, username, VIDAS_MAXIMAS)
     )
 
     conn.commit()
@@ -142,6 +145,7 @@ def adicionar_abate(vencedor_id: int, quantidade: int = 1):
     conn.close()
 
 
+# 🔥 SISTEMA DE VIDA COMPLETO
 def remover_vida(user_id: int, quantidade: int = 1):
     conn = conectar()
     cursor = conn.cursor()
@@ -149,7 +153,7 @@ def remover_vida(user_id: int, quantidade: int = 1):
     cursor.execute(
         """
         UPDATE jogadores
-        SET vidas = vidas - ?
+        SET vidas = MAX(vidas - ?, 0)
         WHERE user_id = ? AND status = 'vivo'
         """,
         (quantidade, user_id)
@@ -166,7 +170,7 @@ def remover_vida(user_id: int, quantidade: int = 1):
         cursor.execute(
             """
             UPDATE jogadores
-            SET vidas = 0, status = 'eliminado', alvo_id = NULL
+            SET status = 'eliminado', alvo_id = NULL
             WHERE user_id = ?
             """,
             (user_id,)
@@ -177,6 +181,23 @@ def remover_vida(user_id: int, quantidade: int = 1):
 
     return buscar_jogador(user_id)
 
+
+# 🔥 NOVO: MALDIÇÃO ATACAR PLAYER
+def escolher_alvo_aleatorio():
+    jogadores = listar_jogadores_vivos()
+
+    if not jogadores:
+        return None
+
+    import random
+    return random.choice(jogadores)
+
+
+def dano_maldicao(user_id: int, dano: int):
+    return remover_vida(user_id, dano)
+
+
+# ================= EVENTOS =================
 
 def criar_evento(nome: str, descricao: str, multiplicador_abate: int = 1, dano_extra: int = 0):
     conn = conectar()

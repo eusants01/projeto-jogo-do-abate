@@ -8,6 +8,7 @@ from discord import app_commands
 
 from utils.db import (
     buscar_jogador,
+    listar_jogadores_vivos,
     adicionar_abate,
     remover_vida,
 )
@@ -23,6 +24,8 @@ CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
+VIDAS_MAXIMAS = 20
+
 TEMPO_MINIMO = 600
 TEMPO_MAXIMO = 2700
 
@@ -31,6 +34,7 @@ TEMPO_MADRUGADA_MAX = 1200
 
 TEMPO_EXPIRACAO = 300
 TEMPO_DELETAR_FALHA = 8
+TEMPO_DELETAR_VITORIA = 12
 
 CARGOS_PROGRESSAO = [
     (50, 1500547442003673220),
@@ -48,7 +52,8 @@ MALDICOES = [
         "cargo_id": 123456789012345678,
         "rara": False,
         "bonus_abate": 1,
-        "dano_falha": 0,
+        "dano_falha": 2,
+        "dano_expiracao": 2,
     },
     {
         "nome": "Mahoraga",
@@ -58,7 +63,8 @@ MALDICOES = [
         "cargo_id": 123456789012345678,
         "rara": True,
         "bonus_abate": 2,
-        "dano_falha": 1,
+        "dano_falha": 3,
+        "dano_expiracao": 4,
     },
     {
         "nome": "Sukuna",
@@ -68,7 +74,8 @@ MALDICOES = [
         "cargo_id": 123456789012345678,
         "rara": True,
         "bonus_abate": 3,
-        "dano_falha": 1,
+        "dano_falha": 5,
+        "dano_expiracao": 6,
     },
     {
         "nome": "Maldição Comum",
@@ -79,6 +86,7 @@ MALDICOES = [
         "rara": False,
         "bonus_abate": 0,
         "dano_falha": 0,
+        "dano_expiracao": 1,
     },
     {
         "nome": "Maldição Especial",
@@ -88,7 +96,8 @@ MALDICOES = [
         "cargo_id": 123456789012345678,
         "rara": False,
         "bonus_abate": 1,
-        "dano_falha": 0,
+        "dano_falha": 1,
+        "dano_expiracao": 2,
     },
 ]
 
@@ -245,6 +254,15 @@ def aplicar_dano_abate(user_id: int, quantidade: int):
     return remover_vida(user_id, quantidade=quantidade)
 
 
+def escolher_jogador_vivo_aleatorio():
+    jogadores = listar_jogadores_vivos()
+
+    if not jogadores:
+        return None
+
+    return random.choice(jogadores)
+
+
 async def deletar_depois(mensagem: discord.Message, segundos: int):
     await asyncio.sleep(segundos)
 
@@ -273,16 +291,81 @@ class BotaoExorcizar(discord.ui.View):
         for item in self.children:
             item.disabled = True
 
-        if self.mensagem:
+        if not self.mensagem:
+            return
+
+        try:
+            await self.mensagem.edit(view=self)
+        except Exception as e:
+            print(f"[ERRO AO DESATIVAR BOTÃO] {e}")
+
+        alvo = escolher_jogador_vivo_aleatorio()
+        dano = self.maldicao.get("dano_expiracao", 1)
+
+        if not alvo:
             try:
-                await self.mensagem.edit(view=self)
                 await self.mensagem.channel.send(
                     f"🌑 **{self.maldicao['nome']} desapareceu nas sombras...**\n"
-                    f"Ninguém conseguiu exorcizá-la a tempo.",
+                    f"Nenhum jogador vivo foi encontrado para ser atacado.",
                     delete_after=15
                 )
             except Exception as e:
                 print(f"[ERRO AO EXPIRAR MALDIÇÃO] {e}")
+            return
+
+        alvo_id = alvo[0]
+        alvo_mencao = f"<@{alvo_id}>"
+
+        jogador_atacado = aplicar_dano_abate(alvo_id, dano)
+
+        if not jogador_atacado:
+            return
+
+        vidas = jogador_atacado[2]
+        status = jogador_atacado[5]
+
+        texto = (
+            f"🌑 **{self.maldicao['nome']} não foi exorcizada a tempo.**\n\n"
+            f"💀 A maldição atacou {alvo_mencao}.\n"
+            f"🩸 Dano causado: **-{dano} vida(s)**\n"
+            f"❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
+        )
+
+        if status == "eliminado":
+            texto += f"\n\n☠️ {alvo_mencao} foi eliminado do **Jogo do Abate**."
+
+        try:
+            await self.mensagem.channel.send(texto)
+        except Exception as e:
+            print(f"[ERRO AO ANUNCIAR ATAQUE DA MALDIÇÃO] {e}")
+
+        try:
+            canal_log = self.mensagem.guild.get_channel(CANAL_LOG_MALDICOES_ID)
+
+            if canal_log:
+                embed_log = discord.Embed(
+                    title="💀 Maldição Atacou",
+                    description=(
+                        f"💀 Maldição: **{self.maldicao['nome']}**\n"
+                        f"🎯 Alvo atingido: {alvo_mencao}\n"
+                        f"🩸 Dano: **-{dano} vida(s)**\n"
+                        f"❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
+                    ),
+                    color=COR_VERMELHA
+                )
+
+                if status == "eliminado":
+                    embed_log.add_field(
+                        name="☠️ Eliminação",
+                        value=f"{alvo_mencao} foi eliminado pelo ataque da maldição.",
+                        inline=False
+                    )
+
+                embed_log.set_footer(text="Família Sant's • Maldições Automáticas")
+                await canal_log.send(embed=embed_log)
+
+        except Exception as e:
+            print(f"[ERRO LOG ATAQUE MALDIÇÃO] {e}")
 
     async def remover_cooldown(self, user_id: int):
         await asyncio.sleep(5)
@@ -385,7 +468,12 @@ class BotaoExorcizar(discord.ui.View):
             else:
                 mensagem += "\n\n👑 **Você já alcançou o rank máximo de exorcista.**"
 
-            await interaction.followup.send(mensagem)
+            msg_vitoria = await interaction.followup.send(
+                mensagem,
+                wait=True
+            )
+
+            asyncio.create_task(deletar_depois(msg_vitoria, TEMPO_DELETAR_VITORIA))
 
             canal_log = interaction.guild.get_channel(CANAL_LOG_MALDICOES_ID)
 
@@ -443,8 +531,8 @@ class BotaoExorcizar(discord.ui.View):
                     status = jogador_afetado[5]
 
                     texto_falha += (
-                        f"\n🩸 **Jogo do Abate:** você perdeu **{dano} vida**."
-                        f"\n❤️ Vidas restantes: **{vidas}/3**"
+                        f"\n🩸 **Jogo do Abate:** você perdeu **{dano} vida(s)**."
+                        f"\n❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
                     )
 
                     if status == "eliminado":
