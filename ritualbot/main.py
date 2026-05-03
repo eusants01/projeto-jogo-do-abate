@@ -10,13 +10,19 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
+# =========================
+# INTENTS (CORRIGIDO)
+# =========================
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
-intents.message_content = False
+intents.message_content = True  # 🔥 NECESSÁRIO PRO !comando
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# =========================
+# STATUS ROTATIVO
+# =========================
 status_list = [
     "🎯 Alvos sendo marcados...",
     "🩸 O ritual já começou.",
@@ -35,6 +41,20 @@ async def trocar_status():
     )
 
 
+# =========================
+# PERMITE COMANDOS COM !
+# =========================
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    await bot.process_commands(message)
+
+
+# =========================
+# BOT ONLINE
+# =========================
 @bot.event
 async def on_ready():
     criar_tabelas()
@@ -52,10 +72,16 @@ async def on_ready():
         print(f"❌ Erro ao sincronizar comandos: {e}")
 
 
+# =========================
+# CARREGAR COGS
+# =========================
 async def carregar_cogs():
     await bot.load_extension("cogs.abate")
 
 
+# =========================
+# MAIN
+# =========================
 async def main():
     if not TOKEN:
         raise RuntimeError("Token não encontrado. Configure o arquivo .env")
