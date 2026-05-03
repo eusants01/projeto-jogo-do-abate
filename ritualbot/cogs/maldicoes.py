@@ -2,7 +2,7 @@ import random
 import asyncio
 import sqlite3
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 
 COR_ROXA_JUJUTSU = 0x6A00FF
@@ -12,13 +12,14 @@ CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
-# CARGOS DE PROGRESSÃO
-# Ordem correta: maior para menor
+TEMPO_MINIMO = 600      # 10 minutos
+TEMPO_MAXIMO = 2700     # 45 minutos
+
 CARGOS_PROGRESSAO = [
-    (50, 1500547442003673220),  # Supremo
-    (30, 1500545859643768882),  # Elite
-    (15, 1500545858247332000),  # Caçador
-    (5, 1500545862743621782),   # Aprendiz
+    (50, 1500547442003673220),
+    (30, 1500545859643768882),
+    (15, 1500545858247332000),
+    (5, 1500545862743621782),
 ]
 
 MALDICOES = [
@@ -26,21 +27,21 @@ MALDICOES = [
         "nome": "Mahito",
         "descricao": "A alma foi tocada... uma presença distorcida surgiu no domínio.",
         "imagem": "https://media1.tenor.com/m/rzLycKqpA_EAAAAd/mahito-domain-expansion.gif",
-        "chance": 25,
+        "chance": 20,
         "cargo_id": 123456789012345678,
     },
     {
         "nome": "Mahoraga",
         "descricao": "A roda começou a girar... adapte-se ou seja destruído.",
         "imagem": "https://media1.tenor.com/m/1qESUcxlIRMAAAAC/mahoraga-then-shadows.gif",
-        "chance": 15,
+        "chance": 7,
         "cargo_id": 123456789012345678,
     },
     {
         "nome": "Sukuna",
         "descricao": "O Rei das Maldições despertou. O domínio foi aberto.",
         "imagem": "https://media1.tenor.com/m/RAp5YpmEH5EAAAAd/jujutsu-kaisen-shibuya-arc-sukuna-shibuya-arc.gif",
-        "chance": 8,
+        "chance": 4,
         "cargo_id": 123456789012345678,
     },
     {
@@ -54,7 +55,7 @@ MALDICOES = [
         "nome": "Maldição Especial",
         "descricao": "Uma energia amaldiçoada perigosa tomou conta do ambiente.",
         "imagem": "https://media1.tenor.com/m/CKTB0HiHuOAAAAAC/finger-bearer-jjk.gif",
-        "chance": 35,
+        "chance": 30,
         "cargo_id": 123456789012345678,
     },
 ]
@@ -148,6 +149,7 @@ async def atualizar_cargo_progressao(member: discord.Member):
 
     for _, cargo_id in CARGOS_PROGRESSAO:
         cargo = member.guild.get_role(cargo_id)
+
         if cargo and cargo in member.roles and cargo != cargo_novo:
             cargos_remover.append(cargo)
 
@@ -293,44 +295,48 @@ class BotaoExorcizar(discord.ui.View):
 class Maldicoes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.tarefa_maldicoes = None
         criar_tabela_maldicoes()
-        self.sistema_maldicoes.start()
+
+    async def cog_load(self):
+        self.tarefa_maldicoes = asyncio.create_task(self.sistema_maldicoes())
 
     def cog_unload(self):
-        self.sistema_maldicoes.cancel()
+        if self.tarefa_maldicoes:
+            self.tarefa_maldicoes.cancel()
 
-    @tasks.loop(seconds=10)
     async def sistema_maldicoes(self):
         await self.bot.wait_until_ready()
 
-        tempo = random.randint(1800, 10800)
-        await asyncio.sleep(tempo)
+        while not self.bot.is_closed():
+            tempo = random.randint(TEMPO_MINIMO, TEMPO_MAXIMO)
+            await asyncio.sleep(tempo)
 
-        canal = self.bot.get_channel(CANAL_MALDICOES_ID)
+            canal = self.bot.get_channel(CANAL_MALDICOES_ID)
 
-        if not canal:
-            return
+            if not canal:
+                continue
 
-        maldicao = random.choice(MALDICOES)
+            maldicao = random.choice(MALDICOES)
 
-        embed = discord.Embed(
-            title=f"💀 {maldicao['nome']} apareceu!",
-            description=(
-                f"{maldicao['descricao']}\n\n"
-                f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
-                f"🎲 Chance de vitória: **{maldicao['chance']}%**\n\n"
-                f"⏳ Essa maldição ficará ativa por **5 minutos**."
-            ),
-            color=COR_ROXA_JUJUTSU
-        )
+            embed = discord.Embed(
+                title=f"💀 {maldicao['nome']} apareceu!",
+                description=(
+                    f"{maldicao['descricao']}\n\n"
+                    f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
+                    f"🎲 Chance de vitória: **{maldicao['chance']}%**\n\n"
+                    f"⏳ Essa maldição ficará ativa por **5 minutos**."
+                ),
+                color=COR_ROXA_JUJUTSU
+            )
 
-        embed.set_image(url=maldicao["imagem"])
-        embed.set_footer(text="Família Sant's • Maldições Aleatórias")
+            embed.set_image(url=maldicao["imagem"])
+            embed.set_footer(text="Família Sant's • Maldições Aleatórias")
 
-        await canal.send(
-            embed=embed,
-            view=BotaoExorcizar(maldicao)
-        )
+            await canal.send(
+                embed=embed,
+                view=BotaoExorcizar(maldicao)
+            )
 
     @app_commands.command(
         name="ranking_exorcistas",
