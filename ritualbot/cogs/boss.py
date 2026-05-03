@@ -21,7 +21,7 @@ BOSSES = [
         "nome": "Sukuna",
         "descricao": "O Rei das Maldições abriu seu domínio.",
         "imagem": "https://c.tenor.com/w3KbwTJ-F5IAAAAd/tenor.gif",
-        "vida": 13000,
+        "vida": 15000,
         "tempo": 600,
         "dano_min": 15,
         "dano_max": 40,
@@ -34,7 +34,7 @@ BOSSES = [
         "nome": "Mahoraga",
         "descricao": "A roda gira. A adaptação começou.",
         "imagem": "https://c.tenor.com/mS_lFC5waJcAAAAC/tenor.gif",
-        "vida": 6500,
+        "vida": 25000,
         "tempo": 600,
         "dano_min": 10,
         "dano_max": 35,
@@ -47,7 +47,7 @@ BOSSES = [
         "nome": "Rika",
         "descricao": "Uma força esmagadora apareceu.",
         "imagem": "https://c.tenor.com/7z8vSgeTDq0AAAAd/tenor.gif",
-        "vida": 8500,
+        "vida": 11500,
         "tempo": 600,
         "dano_min": 10,
         "dano_max": 30,
@@ -334,4 +334,3 @@ class Boss(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Boss(bot))
-    
