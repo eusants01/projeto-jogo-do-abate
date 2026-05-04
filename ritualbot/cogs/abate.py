@@ -25,7 +25,7 @@ COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
 COR_DOURADA = 0xF1C40F
 
-VIDAS_MAXIMAS = 20
+VIDAS_MAXIMAS = 300
 
 GUILD_ID = 1480334256763961465
 CANAL_ABATE_ID = 1500151299209957376
@@ -866,6 +866,39 @@ class Abate(commands.Cog):
             color=COR_VERMELHA
         )
         await enviar_log(interaction.guild, log)
+
+    @commands.command(name="resetar")
+    @commands.has_permissions(administrator=True)
+    async def resetar_prefix(self, ctx: commands.Context):
+        try:
+            await ctx.message.delete()
+        except discord.Forbidden:
+            pass
+        except discord.HTTPException:
+            pass
+
+        resetar_jogo()
+
+        embed = discord.Embed(
+            title="🔄 JOGO DO ABATE RESETADO",
+            description=(
+                "Todos os registros do **Jogo do Abate** foram resetados.\n\n"
+                f"❤️ Os próximos jogadores entrarão com **{VIDAS_MAXIMAS} vidas**.\n"
+                "⚔️ Abates zerados.\n"
+                "🎯 Alvos removidos.\n\n"
+                "> O ritual foi reiniciado."
+            ),
+            color=COR_VERMELHA
+        )
+
+        await ctx.send(embed=embed, delete_after=15)
+
+        log = discord.Embed(
+            title="📜 LOG — RITUAL RESETADO",
+            description=f"O Jogo do Abate foi resetado por {ctx.author.mention} usando `!resetar`.",
+            color=COR_VERMELHA
+        )
+        await enviar_log(ctx.guild, log)
 
     @commands.command(name="painel_abate")
     @commands.has_permissions(administrator=True)
