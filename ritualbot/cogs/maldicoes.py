@@ -25,7 +25,7 @@ CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
-VIDAS_MAXIMAS = 300
+VIDAS_MAXIMAS = 750
 
 TEMPO_MINIMO = 600
 TEMPO_MAXIMO = 2700
@@ -35,7 +35,7 @@ TEMPO_MADRUGADA_MAX = 1200
 
 TEMPO_EXPIRACAO = 300
 TEMPO_DELETAR_FALHA = 8
-TEMPO_DELETAR_VITORIA = 12
+TEMPO_DELETAR_VITORIA = 25
 COOLDOWN_EXORCIZAR = 15
 AVISO_EXPIRACAO = 60
 
@@ -588,7 +588,7 @@ class BotaoExorcizar(discord.ui.View):
     ):
         if self.derrotada:
             await interaction.response.send_message(
-                "💀 Essa maldição já foi derrotada.",
+                "💀 Essa maldição já foi derrotada e não pode mais ser exorcizada.",
                 ephemeral=True
             )
             return
@@ -642,7 +642,19 @@ class BotaoExorcizar(discord.ui.View):
             for item in self.children:
                 item.disabled = True
 
-            await interaction.response.edit_message(view=self)
+            embed_derrotada = discord.Embed(
+                title=f"✅ {self.maldicao['nome']} foi derrotada!",
+                description=(
+                    f"🧿 Exorcista: {interaction.user.mention}\n"
+                    f"💀 Maldição: **{self.maldicao['nome']}**\n\n"
+                    "O botão foi removido para evitar novas tentativas."
+                ),
+                color=COR_VERDE
+            )
+            embed_derrotada.set_image(url=self.maldicao["imagem"])
+            embed_derrotada.set_footer(text="Família Sant's • Maldição Finalizada")
+
+            await interaction.response.edit_message(embed=embed_derrotada, view=None)
 
             vitorias = pegar_vitorias(interaction.user.id)
 
@@ -705,6 +717,9 @@ class BotaoExorcizar(discord.ui.View):
             asyncio.create_task(deletar_depois(msg_vitoria, TEMPO_DELETAR_VITORIA))
 
             canal_log = interaction.guild.get_channel(CANAL_LOG_MALDICOES_ID)
+
+            if not canal_log:
+                print(f"[LOG MALDIÇÕES] Canal de logs não encontrado: {CANAL_LOG_MALDICOES_ID}")
 
             if canal_log:
                 embed_log = discord.Embed(
