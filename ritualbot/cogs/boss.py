@@ -588,24 +588,13 @@ class Boss(commands.Cog):
         msg = await ctx.send(embed=view.embed(), view=view)
         view.mensagem = msg
 
-    @commands.command(name="resetar", aliases=["resetar_vidas", "vidas"])
+    @commands.command(name="resetar_vida", aliases=["vidas"])
     @commands.has_permissions(administrator=True)
-    async def resetar(self, ctx, *, modo: str = "vidas"):
+    async def resetar_vida(self, ctx):
         try:
             await ctx.message.delete()
         except Exception:
             pass
-
-        modo = modo.lower().strip()
-
-        if modo in ["tudo", "all", "jogo", "total", "completo"]:
-            resetar_jogo()
-            await ctx.send(
-                "🩸 **Jogo do Abate resetado completamente.**\n"
-                "Todos os registros foram apagados.",
-                delete_after=12
-            )
-            return
 
         resetar_vidas_todos()
 
@@ -631,22 +620,6 @@ class Boss(commands.Cog):
             delete_after=12
         )
 
-    @commands.command(name="resetar_vida", aliases=["reset_vida"])
-    @commands.has_permissions(administrator=True)
-    async def resetar_vida(self, ctx):
-        try:
-            await ctx.message.delete()
-        except Exception:
-            pass
-
-        resetar_vidas_todos()
-
-        await ctx.send(
-            f"❤️ **Vidas restauradas!**\n"
-            f"Todos os jogadores voltaram para **{VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}** e status **vivo**.",
-            delete_after=12
-        )
-
     @boss.error
     async def boss_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
@@ -661,19 +634,19 @@ class Boss(commands.Cog):
             )
             print(f"[ERRO BOSS] {error}")
 
-    @resetar.error
-    async def resetar_error(self, ctx, error):
+    @resetar_vida.error
+    async def resetar_vida_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
             await ctx.reply(
-                "❌ Apenas administradores podem resetar o jogo.",
+                "❌ Apenas administradores podem resetar as vidas.",
                 delete_after=8
             )
         else:
             await ctx.reply(
-                "⚠️ Ocorreu um erro ao resetar.",
+                "⚠️ Ocorreu um erro ao resetar vidas.",
                 delete_after=8
             )
-            print(f"[ERRO RESETAR] {error}")
+            print(f"[ERRO RESETAR VIDA] {error}")
 
     @resetar_tudo.error
     async def resetar_tudo_error(self, ctx, error):
@@ -688,20 +661,6 @@ class Boss(commands.Cog):
                 delete_after=8
             )
             print(f"[ERRO RESETAR TUDO] {error}")
-
-    @resetar_vida.error
-    async def resetar_vida_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.reply(
-                "❌ Apenas administradores podem resetar as vidas.",
-                delete_after=8
-            )
-        else:
-            await ctx.reply(
-                "⚠️ Ocorreu um erro ao resetar vidas.",
-                delete_after=8
-            )
-            print(f"[ERRO RESETAR VIDA] {error}")
 
 
 async def setup(bot):
