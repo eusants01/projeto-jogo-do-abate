@@ -474,6 +474,7 @@ class BotaoExorcizar(discord.ui.View):
         self.derrotada = False
         self.cooldown = set()
         self.mensagem = None
+        self.exorcista_id = None
 
     async def aviso_quase_expirando(self):
         await asyncio.sleep(max(1, TEMPO_EXPIRACAO - AVISO_EXPIRACAO))
@@ -493,6 +494,9 @@ class BotaoExorcizar(discord.ui.View):
         """Remove o botão e transforma a mensagem original em maldição finalizada."""
         if not self.mensagem:
             return
+
+        if not exorcista and self.exorcista_id and self.mensagem.guild:
+            exorcista = self.mensagem.guild.get_member(self.exorcista_id)
 
         try:
             descricao = (
@@ -642,6 +646,7 @@ class BotaoExorcizar(discord.ui.View):
 
         if sorteio <= chance_final:
             self.derrotada = True
+            self.exorcista_id = interaction.user.id
             adicionar_vitoria(interaction.user.id)
 
             cargo_maldicao = interaction.guild.get_role(self.maldicao["cargo_id"])
@@ -729,17 +734,15 @@ class BotaoExorcizar(discord.ui.View):
             else:
                 mensagem += "\n\n👑 **Você já alcançou o rank máximo de exorcista.**"
 
-            msg_vitoria = await interaction.followup.send(
-                mensagem,
-                wait=True
-            )
-
-            asyncio.create_task(deletar_depois(msg_vitoria, TEMPO_DELETAR_VITORIA))
+            msg_vitoria = await interaction.channel.send(mensagem)
 
             canal_log = interaction.guild.get_channel(CANAL_LOG_MALDICOES_ID)
 
             if not canal_log:
-                print(f"[LOG MALDIÇÕES] Canal de logs não encontrado: {CANAL_LOG_MALDICOES_ID}")
+                try:
+                    canal_log = await interaction.guild.fetch_channel(CANAL_LOG_MALDICOES_ID)
+                except Exception as e:
+                    print(f"[LOG MALDIÇÕES] Canal de logs não encontrado ou sem acesso: {CANAL_LOG_MALDICOES_ID} | {e}")
 
             if canal_log:
                 embed_log = discord.Embed(
