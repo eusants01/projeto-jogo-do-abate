@@ -79,6 +79,7 @@ async def carregar_cogs():
     await bot.load_extension("cogs.abate")
     await bot.load_extension("cogs.maldicoes")
     await bot.load_extension("cogs.boss")
+    await bot.load_extension("cogs.familias")
 
 
 # =========================

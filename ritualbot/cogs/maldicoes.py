@@ -11,6 +11,7 @@ from utils.db import (
     listar_jogadores_vivos,
     adicionar_abate,
     remover_vida,
+    conectar,
 )
 
 COR_ROXA_JUJUTSU = 0x6A00FF
@@ -24,7 +25,7 @@ CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
-VIDAS_MAXIMAS = 20
+VIDAS_MAXIMAS = 300
 
 TEMPO_MINIMO = 600
 TEMPO_MAXIMO = 2700
@@ -35,6 +36,8 @@ TEMPO_MADRUGADA_MAX = 1200
 TEMPO_EXPIRACAO = 300
 TEMPO_DELETAR_FALHA = 8
 TEMPO_DELETAR_VITORIA = 12
+COOLDOWN_EXORCIZAR = 15
+AVISO_EXPIRACAO = 60
 
 CARGOS_PROGRESSAO = [
     (50, 1500547442003673220),
@@ -176,9 +179,17 @@ def criar_tabela_maldicoes():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS exorcistas (
             user_id INTEGER PRIMARY KEY,
-            vitorias INTEGER DEFAULT 0
+            vitorias INTEGER DEFAULT 0,
+            vitorias_semana INTEGER DEFAULT 0,
+            vitorias_mes INTEGER DEFAULT 0
         )
     """)
+
+    for coluna in ["vitorias_semana", "vitorias_mes"]:
+        try:
+            cursor.execute(f"ALTER TABLE exorcistas ADD COLUMN {coluna} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
 
     conn.commit()
     conn.close()
@@ -189,10 +200,13 @@ def adicionar_vitoria(user_id: int):
     cursor = conn.cursor()
 
     cursor.execute("""
-        INSERT INTO exorcistas (user_id, vitorias)
-        VALUES (?, 1)
+        INSERT INTO exorcistas (user_id, vitorias, vitorias_semana, vitorias_mes)
+        VALUES (?, 1, 1, 1)
         ON CONFLICT(user_id)
-        DO UPDATE SET vitorias = vitorias + 1
+        DO UPDATE SET
+            vitorias = vitorias + 1,
+            vitorias_semana = vitorias_semana + 1,
+            vitorias_mes = vitorias_mes + 1
     """, (user_id,))
 
     conn.commit()
@@ -214,20 +228,41 @@ def pegar_vitorias(user_id: int):
     return resultado[0] if resultado else 0
 
 
-def pegar_ranking(limit: int = 10):
+def pegar_ranking(limit: int = 10, periodo: str = "geral"):
     conn = sqlite3.connect(DB_MALDICOES)
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT user_id, vitorias
+    coluna = "vitorias"
+
+    if periodo == "semanal":
+        coluna = "vitorias_semana"
+    elif periodo == "mensal":
+        coluna = "vitorias_mes"
+
+    cursor.execute(f"""
+        SELECT user_id, {coluna}
         FROM exorcistas
-        ORDER BY vitorias DESC
+        WHERE {coluna} > 0
+        ORDER BY {coluna} DESC
         LIMIT ?
     """, (limit,))
 
     resultado = cursor.fetchall()
     conn.close()
     return resultado
+
+
+def resetar_ranking_periodo(periodo: str):
+    conn = sqlite3.connect(DB_MALDICOES)
+    cursor = conn.cursor()
+
+    if periodo == "semanal":
+        cursor.execute("UPDATE exorcistas SET vitorias_semana = 0")
+    elif periodo == "mensal":
+        cursor.execute("UPDATE exorcistas SET vitorias_mes = 0")
+
+    conn.commit()
+    conn.close()
 
 
 def pegar_proximo_rank(vitorias: int):
@@ -317,6 +352,99 @@ def aplicar_dano_abate(user_id: int, quantidade: int):
     return remover_vida(user_id, quantidade=quantidade)
 
 
+def restaurar_vida_total(user_id: int):
+    jogador = buscar_jogador(user_id)
+
+    if not jogador:
+        return False
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE jogadores
+        SET vidas = ?, status = 'vivo'
+        WHERE user_id = ?
+        """,
+        (VIDAS_MAXIMAS, user_id)
+    )
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def obter_familia_jogador(user_id: int):
+    jogador = buscar_jogador(user_id)
+
+    if not jogador:
+        return "Livre"
+
+    try:
+        return jogador[7] or "Livre"
+    except IndexError:
+        return "Livre"
+
+
+def calcular_chance_final(user_id: int, chance_base: int):
+    familia = obter_familia_jogador(user_id)
+    bonus = 0
+
+    if "gojo" in familia.lower():
+        bonus = 5
+
+    return min(95, chance_base + bonus), bonus, familia
+
+
+def sortear_drop_maldicao(nome_maldicao: str):
+    drops_lendarios = {
+        "sukuna": "Dedo Amaldiçoado do Sukuna",
+        "mahoraga": "Roda da Adaptação",
+        "rika": "Fragmento da Rainha das Maldições",
+        "mahito": "Alma Transfigurada",
+        "jogo": "Cinzas Vulcânicas",
+        "hanami": "Raiz Amaldiçoada",
+        "dagon": "Concha do Domínio Marinho",
+        "toji": "Lâmina Sem Energia",
+        "choso": "Sangue Condensado",
+    }
+
+    nome_lower = nome_maldicao.lower()
+    chance = random.randint(1, 100)
+
+    if chance <= 4:
+        return {
+            "raridade": "LENDÁRIO",
+            "emoji": "🌟",
+            "item": drops_lendarios.get(nome_lower, f"Relíquia de {nome_maldicao}"),
+            "bonus_abate": 5,
+        }
+
+    if chance <= 15:
+        return {
+            "raridade": "ÉPICO",
+            "emoji": "🟣",
+            "item": f"Núcleo Especial de {nome_maldicao}",
+            "bonus_abate": 3,
+        }
+
+    if chance <= 40:
+        return {
+            "raridade": "RARO",
+            "emoji": "🔵",
+            "item": f"Marca de {nome_maldicao}",
+            "bonus_abate": 2,
+        }
+
+    return {
+        "raridade": "COMUM",
+        "emoji": "⚪",
+        "item": "Fragmento Amaldiçoado",
+        "bonus_abate": 1,
+    }
+
+
 def escolher_jogador_vivo_aleatorio():
     jogadores = listar_jogadores_vivos()
 
@@ -346,6 +474,20 @@ class BotaoExorcizar(discord.ui.View):
         self.derrotada = False
         self.cooldown = set()
         self.mensagem = None
+
+    async def aviso_quase_expirando(self):
+        await asyncio.sleep(max(1, TEMPO_EXPIRACAO - AVISO_EXPIRACAO))
+
+        if self.derrotada or not self.mensagem:
+            return
+
+        try:
+            await self.mensagem.channel.send(
+                f"⚠️ **Atenção!** A maldição **{self.maldicao['nome']}** atacará alguém em **{AVISO_EXPIRACAO} segundos** se ninguém derrotar.",
+                delete_after=20
+            )
+        except Exception as e:
+            print(f"[ERRO AVISO MALDIÇÃO] {e}")
 
     async def on_timeout(self):
         if self.derrotada:
@@ -431,7 +573,7 @@ class BotaoExorcizar(discord.ui.View):
             print(f"[ERRO LOG ATAQUE MALDIÇÃO] {e}")
 
     async def remover_cooldown(self, user_id: int):
-        await asyncio.sleep(8)
+        await asyncio.sleep(COOLDOWN_EXORCIZAR)
         self.cooldown.discard(user_id)
 
     @discord.ui.button(
@@ -453,7 +595,7 @@ class BotaoExorcizar(discord.ui.View):
 
         if interaction.user.id in self.cooldown:
             await interaction.response.send_message(
-                "⏳ Você acabou de tentar exorcizar. Espere alguns segundos.",
+                "⏳ Você acabou de tentar exorcizar. Espere 15 segundos.",
                 ephemeral=True
             )
             return
@@ -462,8 +604,12 @@ class BotaoExorcizar(discord.ui.View):
         asyncio.create_task(self.remover_cooldown(interaction.user.id))
 
         sorteio = random.randint(1, 100)
+        chance_final, bonus_familia_chance, familia_jogador = calcular_chance_final(
+            interaction.user.id,
+            self.maldicao["chance"]
+        )
 
-        if sorteio <= self.maldicao["chance"]:
+        if sorteio <= chance_final:
             self.derrotada = True
             adicionar_vitoria(interaction.user.id)
 
@@ -488,6 +634,10 @@ class BotaoExorcizar(discord.ui.View):
 
             bonus = self.maldicao.get("bonus_abate", 0)
             bonus_aplicado = aplicar_bonus_abate(interaction.user.id, bonus)
+            vida_restaurada = restaurar_vida_total(interaction.user.id)
+
+            drop = sortear_drop_maldicao(self.maldicao["nome"])
+            drop_aplicado = aplicar_bonus_abate(interaction.user.id, drop["bonus_abate"])
 
             for item in self.children:
                 item.disabled = True
@@ -509,6 +659,22 @@ class BotaoExorcizar(discord.ui.View):
                     mensagem += f"\n🩸 **Jogo do Abate:** +{bonus} ponto(s) de abate."
                 else:
                     mensagem += "\n🩸 **Jogo do Abate:** bônus não aplicado, pois você não está registrado no ritual."
+
+            if bonus_familia_chance > 0:
+                mensagem += f"\n🔵 **Bônus da Família Gojo:** +{bonus_familia_chance}% de chance aplicado."
+
+            if vida_restaurada:
+                mensagem += f"\n❤️ **Vida restaurada:** {VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}"
+
+            if drop:
+                mensagem += (
+                    f"\n\n🎁 **DROP:** {drop['emoji']} **{drop['raridade']}**"
+                    f"\n📦 Item: **{drop['item']}**"
+                    f"\n⚔️ Bônus: +{drop['bonus_abate']} abate(s)"
+                )
+
+                if not drop_aplicado:
+                    mensagem += "\n⚠️ Drop não aplicado no Abate, pois você não está registrado."
 
             if cargo_progressao:
                 mensagem += (
@@ -546,7 +712,9 @@ class BotaoExorcizar(discord.ui.View):
                     description=(
                         f"👤 Exorcista: {interaction.user.mention}\n"
                         f"💀 Maldição: **{self.maldicao['nome']}**\n"
-                        f"🎲 Chance: **{self.maldicao['chance']}%**\n"
+                        f"🎲 Chance base: **{self.maldicao['chance']}%**\n"
+                        f"🎲 Chance final: **{chance_final}%**\n"
+                        f"🏯 Família: **{familia_jogador}**\n"
                         f"🏆 Total de vitórias: **{vitorias}**"
                     ),
                     color=COR_VERDE
@@ -569,6 +737,26 @@ class BotaoExorcizar(discord.ui.View):
                         ),
                         inline=False
                     )
+
+                embed_log.add_field(
+                    name="❤️ Vida Restaurada",
+                    value=(
+                        f"{VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}"
+                        if vida_restaurada
+                        else "Não restaurada; jogador não registrado no Jogo do Abate."
+                    ),
+                    inline=False
+                )
+
+                embed_log.add_field(
+                    name="🎁 Drop",
+                    value=(
+                        f"{drop['emoji']} **{drop['raridade']}**\n"
+                        f"Item: **{drop['item']}**\n"
+                        f"Bônus: +{drop['bonus_abate']} abate(s)"
+                    ),
+                    inline=False
+                )
 
                 if cargo_progressao:
                     embed_log.add_field(
@@ -644,7 +832,8 @@ class Maldicoes(commands.Cog):
                 f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
                 f"🎲 Chance de vitória: **{maldicao['chance']}%**\n"
                 f"🩸 Dano ao falhar: **-{maldicao.get('dano_falha', 0)} vida(s)**\n"
-                f"🌑 Dano se ninguém derrotar: **-{maldicao.get('dano_expiracao', 0)} vida(s)**\n\n"
+                f"🌑 Dano se ninguém derrotar: **-{maldicao.get('dano_expiracao', 0)} vida(s)**\n"
+                f"⏳ Cooldown por jogador: **{COOLDOWN_EXORCIZAR}s**\n\n"
                 f"{extra}"
             ),
             color=COR_ROXA_JUJUTSU
@@ -661,6 +850,7 @@ class Maldicoes(commands.Cog):
         )
 
         view.mensagem = mensagem
+        asyncio.create_task(view.aviso_quase_expirando())
 
     async def sistema_maldicoes(self):
         await self.bot.wait_until_ready()
@@ -723,8 +913,13 @@ class Maldicoes(commands.Cog):
         description="Mostra o ranking dos maiores exorcistas do servidor."
     )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
-    async def ranking_exorcistas(self, interaction: discord.Interaction):
-        ranking = pegar_ranking(10)
+    async def ranking_exorcistas(self, interaction: discord.Interaction, periodo: str = "geral"):
+        periodo = periodo.lower().strip()
+
+        if periodo not in ["geral", "semanal", "mensal"]:
+            periodo = "geral"
+
+        ranking = pegar_ranking(10, periodo=periodo)
 
         if not ranking:
             await interaction.response.send_message(
@@ -743,13 +938,38 @@ class Maldicoes(commands.Cog):
             texto += f"{medalha} {nome} — 🧿 **{vitorias}** vitória(s)\n"
 
         embed = discord.Embed(
-            title="🏆 Ranking de Exorcistas",
+            title=f"🏆 Ranking de Exorcistas — {periodo.capitalize()}",
             description=texto,
             color=COR_ROXA_JUJUTSU
         )
 
         embed.set_footer(text="Família Sant's • Sistema de Maldições")
         await interaction.response.send_message(embed=embed)
+
+    @commands.command(name="resetar_ranking_exorcistas")
+    @commands.has_permissions(administrator=True)
+    async def resetar_ranking_exorcistas(self, ctx, periodo: str = "semanal"):
+        periodo = periodo.lower().strip()
+
+        if periodo not in ["semanal", "mensal"]:
+            await ctx.reply("❌ Use `!resetar_ranking_exorcistas semanal` ou `!resetar_ranking_exorcistas mensal`.", delete_after=10)
+            return
+
+        resetar_ranking_periodo(periodo)
+
+        await ctx.reply(
+            f"🔄 Ranking de exorcistas **{periodo}** resetado com sucesso.",
+            delete_after=10
+        )
+
+    @resetar_ranking_exorcistas.error
+    async def resetar_ranking_exorcistas_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.reply("❌ Apenas administradores podem resetar ranking.", delete_after=8)
+        else:
+            await ctx.reply("⚠️ Ocorreu um erro ao resetar o ranking.", delete_after=8)
+            print(f"[ERRO RESET RANKING EXORCISTAS] {error}")
+
 
 
 async def setup(bot):

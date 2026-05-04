@@ -18,6 +18,8 @@ COR_ROXA = 0x7B2CFF
 VIDAS_MAXIMAS = 300
 CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
+BOSS_ATIVO = None
+
 BOSSES = [
     {
         "nome": "Sukuna",
@@ -347,6 +349,9 @@ class BossView(discord.ui.View):
             await interaction.channel.send(texto)
 
     async def finalizar(self, channel: discord.TextChannel, guild: discord.Guild):
+        global BOSS_ATIVO
+        BOSS_ATIVO = None
+
         if not self.danos:
             return
 
@@ -426,6 +431,8 @@ class BossView(discord.ui.View):
         await enviar_log(guild, embed)
 
     async def on_timeout(self):
+        global BOSS_ATIVO
+
         if self.finalizado:
             return
 
@@ -475,6 +482,8 @@ class BossView(discord.ui.View):
             color=COR_VERMELHA
         )
         embed.set_footer(text="Família Sant's • Raid Boss")
+
+        BOSS_ATIVO = None
 
         if self.mensagem:
             await self.mensagem.channel.send(embed=embed)
@@ -543,7 +552,7 @@ class BossView(discord.ui.View):
                 if status == "eliminado":
                     texto += "\n☠️ **ELIMINADO**"
 
-                await interaction.channel.send(texto)
+                await interaction.followup.send(texto, ephemeral=True)
 
         await self.usar_habilidade(interaction)
 
@@ -569,10 +578,20 @@ class Boss(commands.Cog):
     @commands.command(name="boss")
     @commands.has_permissions(administrator=True)
     async def boss(self, ctx, *, nome=None):
+        global BOSS_ATIVO
+
         try:
             await ctx.message.delete()
         except Exception:
             pass
+
+        if BOSS_ATIVO is not None:
+            await ctx.send(
+                "⚠️ Já existe um **boss ativo** no servidor.\n"
+                "Derrote ou aguarde ele acabar antes de invocar outro.",
+                delete_after=12
+            )
+            return
 
         boss = buscar_boss(nome) if nome else random.choice(BOSSES)
 
@@ -587,6 +606,24 @@ class Boss(commands.Cog):
         view = BossView(boss)
         msg = await ctx.send(embed=view.embed(), view=view)
         view.mensagem = msg
+        BOSS_ATIVO = view
+
+    @commands.command(name="limpar_boss")
+    @commands.has_permissions(administrator=True)
+    async def limpar_boss(self, ctx):
+        global BOSS_ATIVO
+
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+        BOSS_ATIVO = None
+
+        await ctx.send(
+            "🧹 Boss ativo limpo manualmente. Agora outro boss pode ser invocado.",
+            delete_after=10
+        )
 
     @commands.command(name="resetar_vida", aliases=["vidas"])
     @commands.has_permissions(administrator=True)
@@ -619,6 +656,20 @@ class Boss(commands.Cog):
             "Todos os registros foram apagados.",
             delete_after=12
         )
+
+    @limpar_boss.error
+    async def limpar_boss_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.reply(
+                "❌ Apenas administradores podem limpar boss ativo.",
+                delete_after=8
+            )
+        else:
+            await ctx.reply(
+                "⚠️ Ocorreu um erro ao limpar o boss ativo.",
+                delete_after=8
+            )
+            print(f"[ERRO LIMPAR BOSS] {error}")
 
     @boss.error
     async def boss_error(self, ctx, error):
