@@ -1,7 +1,7 @@
 import os
 import psycopg2
 
-VIDAS_MAXIMAS = 300
+VIDAS_MAXIMAS = 750
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
