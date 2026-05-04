@@ -25,7 +25,7 @@ CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
 DB_MALDICOES = "maldicoes.db"
 
-VIDAS_MAXIMAS = 750
+VIDAS_MAXIMAS = 300
 
 TEMPO_MINIMO = 600
 TEMPO_MAXIMO = 2700
@@ -36,7 +36,7 @@ TEMPO_MADRUGADA_MAX = 1200
 TEMPO_EXPIRACAO = 300
 TEMPO_DELETAR_FALHA = 8
 TEMPO_DELETAR_VITORIA = 25
-COOLDOWN_EXORCIZAR = 15
+COOLDOWN_EXORCIZAR = 5
 AVISO_EXPIRACAO = 60
 
 CARGOS_PROGRESSAO = [
@@ -489,6 +489,35 @@ class BotaoExorcizar(discord.ui.View):
         except Exception as e:
             print(f"[ERRO AVISO MALDIÇÃO] {e}")
 
+    async def finalizar_visual_maldicao(self, exorcista: discord.Member | None = None):
+        """Remove o botão e transforma a mensagem original em maldição finalizada."""
+        if not self.mensagem:
+            return
+
+        try:
+            descricao = (
+                f"🧿 Exorcista: {exorcista.mention}\n"
+                f"💀 Maldição: **{self.maldicao['nome']}**\n\n"
+                "O botão foi removido para evitar novas tentativas."
+                if exorcista
+                else (
+                    f"💀 Maldição: **{self.maldicao['nome']}**\n\n"
+                    "Essa maldição já foi finalizada e não pode mais ser exorcizada."
+                )
+            )
+
+            embed_derrotada = discord.Embed(
+                title=f"✅ {self.maldicao['nome']} foi derrotada!",
+                description=descricao,
+                color=COR_VERDE
+            )
+            embed_derrotada.set_image(url=self.maldicao["imagem"])
+            embed_derrotada.set_footer(text="Família Sant's • Maldição Finalizada")
+
+            await self.mensagem.edit(embed=embed_derrotada, view=None)
+        except Exception as e:
+            print(f"[ERRO FINALIZAR VISUAL MALDIÇÃO] {e}")
+
     async def on_timeout(self):
         if self.derrotada:
             return
@@ -587,6 +616,8 @@ class BotaoExorcizar(discord.ui.View):
         button: discord.ui.Button
     ):
         if self.derrotada:
+            await self.finalizar_visual_maldicao()
+
             await interaction.response.send_message(
                 "💀 Essa maldição já foi derrotada e não pode mais ser exorcizada.",
                 ephemeral=True
@@ -595,7 +626,7 @@ class BotaoExorcizar(discord.ui.View):
 
         if interaction.user.id in self.cooldown:
             await interaction.response.send_message(
-                "⏳ Você acabou de tentar exorcizar. Espere 15 segundos.",
+                "⏳ Você acabou de tentar exorcizar. Espere 5 segundos.",
                 ephemeral=True
             )
             return
@@ -642,19 +673,8 @@ class BotaoExorcizar(discord.ui.View):
             for item in self.children:
                 item.disabled = True
 
-            embed_derrotada = discord.Embed(
-                title=f"✅ {self.maldicao['nome']} foi derrotada!",
-                description=(
-                    f"🧿 Exorcista: {interaction.user.mention}\n"
-                    f"💀 Maldição: **{self.maldicao['nome']}**\n\n"
-                    "O botão foi removido para evitar novas tentativas."
-                ),
-                color=COR_VERDE
-            )
-            embed_derrotada.set_image(url=self.maldicao["imagem"])
-            embed_derrotada.set_footer(text="Família Sant's • Maldição Finalizada")
-
-            await interaction.response.edit_message(embed=embed_derrotada, view=None)
+            await interaction.response.defer()
+            await self.finalizar_visual_maldicao(interaction.user)
 
             vitorias = pegar_vitorias(interaction.user.id)
 
