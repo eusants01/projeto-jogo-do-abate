@@ -544,6 +544,62 @@ class Boss(commands.Cog):
         view.mensagem = msg
         BOSS_ATIVO = view
 
+
+    @commands.command(name="painel_abate")
+    @commands.has_permissions(administrator=True)
+    async def painel_abate(self, ctx):
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+        embed = discord.Embed(
+            title="🩸 Jogo do Abate",
+            description=(
+                "O **Jogo do Abate** está ativo no domínio da Família Sant's.\n\n"
+                "⚔️ Enfrente bosses amaldiçoados.\n"
+                "❤️ Gerencie suas vidas durante o ritual.\n"
+                "🛒 Use itens da Loja Amaldiçoada para sobreviver.\n"
+                "🔥 Buffs como **Fúria** e **Escudo** podem mudar o resultado da batalha.\n\n"
+                "Apenas os mais fortes permanecem de pé."
+            ),
+            color=COR_ROXA
+        )
+
+        embed.add_field(
+            name="📌 Comandos principais",
+            value=(
+                "`!boss` — invoca um boss aleatório *(admin)*\n"
+                "`!boss sukuna` — invoca um boss específico *(admin)*\n"
+                "`!limpar_boss` — limpa boss ativo *(admin)*\n"
+                "`!resetar_vida` — restaura vidas *(admin)*\n"
+                "`!resetar_tudo` — reseta o jogo *(admin)*"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎮 Como jogar",
+            value=(
+                "Quando um boss aparecer, clique em **⚔️ Atacar**.\n"
+                "Jogadores vivos podem atacar e competir por dano.\n"
+                "Ao derrotar o boss, os participantes recebem recompensas, fragmentos e drops."
+            ),
+            inline=False
+        )
+
+        embed.set_footer(text="Família Sant's • Jogo do Abate")
+
+        await ctx.send(embed=embed)
+
+    @painel_abate.error
+    async def painel_abate_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.reply("❌ Apenas administradores podem criar o painel do abate.", delete_after=8)
+        else:
+            await ctx.reply("⚠️ Ocorreu um erro ao criar o painel do abate.", delete_after=8)
+            print(f"[ERRO PAINEL ABATE] {error}")
+
     @commands.command(name="limpar_boss")
     @commands.has_permissions(administrator=True)
     async def limpar_boss(self, ctx):
@@ -581,3 +637,4 @@ class Boss(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Boss(bot))
+    
