@@ -16,12 +16,12 @@ from utils.economia import (
 from utils.db import buscar_jogador, conectar
 
 COR_ROXA_JUJUTSU = 0x6A00FF
-COR_VERDE = 0x2ECC71
-COR_VERMELHA = 0xE63946
 
 VIDAS_MAXIMAS = 750
-
 ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
+
+BANNER_LOJA = "https://i.imgur.com/ypNuTwX.png"
+
 
 LOJA = {
     "purificar": {
@@ -111,6 +111,7 @@ class LojaView(discord.ui.View):
         itens = pegar_inventario(interaction.user.id)
         buffs = pegar_buffs(interaction.user.id)
         corrupcao = pegar_corrupcao(interaction.user.id)
+        saldo = quantidade_item(interaction.user.id, ITEM_FRAGMENTO)
 
         texto_itens = ""
         if itens:
@@ -126,8 +127,6 @@ class LojaView(discord.ui.View):
         else:
             texto_buffs = "Nenhum buff ativo."
 
-        saldo = quantidade_item(interaction.user.id, ITEM_FRAGMENTO)
-
         embed = discord.Embed(
             title="🎒 Seu Inventário Amaldiçoado",
             description=f"🧩 Fragmentos: **{saldo}**",
@@ -137,7 +136,6 @@ class LojaView(discord.ui.View):
         embed.add_field(name="📦 Itens", value=texto_itens, inline=False)
         embed.add_field(name="✨ Buffs", value=texto_buffs, inline=False)
         embed.add_field(name="🩸 Corrupção", value=f"**{corrupcao}** ponto(s)", inline=False)
-
         embed.set_footer(text="Família Sant's • Inventário")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -146,10 +144,7 @@ class LojaView(discord.ui.View):
         item = LOJA.get(codigo)
 
         if not item:
-            await interaction.response.send_message(
-                "❌ Item não encontrado.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Item não encontrado.", ephemeral=True)
             return
 
         saldo = quantidade_item(interaction.user.id, ITEM_FRAGMENTO)
@@ -201,11 +196,7 @@ class LojaView(discord.ui.View):
             return
 
         if tipo == "buff":
-            adicionar_buff(
-                interaction.user.id,
-                item["buff"],
-                item["quantidade"]
-            )
+            adicionar_buff(interaction.user.id, item["buff"], item["quantidade"])
 
             await interaction.response.send_message(
                 f"✨ **Compra concluída!**\n\n"
@@ -226,9 +217,10 @@ class LojaView(discord.ui.View):
             description=texto_loja(),
             color=COR_ROXA_JUJUTSU
         )
-        embed.set_image(url="https://i.imgur.com/ypNuTwX.png")
 
+        embed.set_image(url=BANNER_LOJA)
         embed.set_footer(text="Família Sant's • Loja")
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(
@@ -333,6 +325,7 @@ class Loja(commands.Cog):
             inline=False
         )
 
+        embed.set_image(url=BANNER_LOJA)
         embed.set_footer(text="Família Sant's • Loja Amaldiçoada")
 
         await ctx.send(embed=embed, view=LojaView())
@@ -345,7 +338,9 @@ class Loja(commands.Cog):
             color=COR_ROXA_JUJUTSU
         )
 
+        embed.set_image(url=BANNER_LOJA)
         embed.set_footer(text="Família Sant's • Loja")
+
         await ctx.send(embed=embed)
 
     @commands.command(name="inventario", aliases=["inv"])
@@ -380,7 +375,6 @@ class Loja(commands.Cog):
         embed.add_field(name="📦 Itens", value=texto_itens, inline=False)
         embed.add_field(name="✨ Buffs", value=texto_buffs, inline=False)
         embed.add_field(name="🩸 Corrupção", value=f"**{corrupcao}** ponto(s)", inline=False)
-
         embed.set_footer(text="Família Sant's • Inventário")
 
         await ctx.send(embed=embed)
