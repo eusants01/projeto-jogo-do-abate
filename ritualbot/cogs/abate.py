@@ -1,951 +1,583 @@
 import random
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from utils.db import (
-    registrar_jogador,
     buscar_jogador,
-    listar_jogadores_vivos,
-    listar_ranking,
-    definir_alvo,
-    limpar_alvos,
     adicionar_abate,
     remover_vida,
+    listar_jogadores_vivos,
+    conectar,
     resetar_jogo,
-    criar_evento,
-    listar_eventos,
-    ativar_evento,
-    encerrar_eventos,
-    buscar_evento_ativo,
 )
 
-COR_ROXA = 0x7B2CFF
+from utils.economia import (
+    criar_tabelas_economia,
+    adicionar_item,
+    consumir_buff,
+    adicionar_buff,
+)
+
 COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
+COR_ROXA = 0x7B2CFF
 COR_DOURADA = 0xF1C40F
 
 VIDAS_MAXIMAS = 750
+CANAL_LOG_MALDICOES_ID = 1500543560834089272
+TEMPO_APAGAR_ATAQUE = 3
+BOSS_ATIVO = None
 
-GUILD_ID = 1480334256763961465
-CANAL_ABATE_ID = 1500151299209957376
-CANAL_LOGS_ID = 1500386205160833115
-CANAL_EVENTOS_ID = 1500386762210672680
+ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
 
-BANNER_URL = "https://i.imgur.com/28Oo2ln.png"
+BOSSES = [
+    {
+        "nome": "Sukuna",
+        "descricao": "O Rei das Maldições abriu seu domínio.",
+        "imagem": "https://c.tenor.com/w3KbwTJ-F5IAAAAd/tenor.gif",
+        "vida": 45000,
+        "tempo": 600,
+        "dano_min": 18,
+        "dano_max": 38,
+        "recompensa_participou": 1,
+        "recompensa_top": 5,
+        "recompensa_final": 3,
+        "dano_falha": 12,
+        "agressividade": 1,
+        "agressividade_max": 8,
+        "chance_ataque": 30,
+        "chance_habilidade": 25,
+        "habilidade": "corte_area",
+        "dano_habilidade": 18,
+        "drop_lendario": "Fragmento do Rei das Maldições",
+    },
+    {
+        "nome": "Mahoraga",
+        "descricao": "A roda gira. A adaptação começou.",
+        "imagem": "https://c.tenor.com/mS_lFC5waJcAAAAC/tenor.gif",
+        "vida": 27000,
+        "tempo": 600,
+        "dano_min": 14,
+        "dano_max": 32,
+        "recompensa_participou": 1,
+        "recompensa_top": 4,
+        "recompensa_final": 3,
+        "dano_falha": 10,
+        "agressividade": 1,
+        "agressividade_max": 7,
+        "chance_ataque": 22,
+        "chance_habilidade": 45,
+        "habilidade": "adaptacao",
+        "dano_habilidade": 14,
+        "drop_lendario": "Roda da Adaptação",
+    },
+    {
+        "nome": "Brunaandsants",
+        "descricao": "Uma história que jamais será apagada.",
+        "imagem": "https://c.tenor.com/m__ZnOd5kF8AAAAd/tenor.gif",
+        "vida": 30000,
+        "tempo": 600,
+        "dano_min": 12,
+        "dano_max": 30,
+        "recompensa_participou": 1,
+        "recompensa_top": 4,
+        "recompensa_final": 3,
+        "dano_falha": 16,
+        "agressividade": 1,
+        "agressividade_max": 10,
+        "chance_ataque": 25,
+        "chance_habilidade": 35,
+        "habilidade": "pacto_eterno",
+        "dano_habilidade": 20,
+        "drop_lendario": "Pacto Eterno",
+    },
+    {
+        "nome": "Rika",
+        "descricao": "Uma força esmagadora apareceu.",
+        "imagem": "https://c.tenor.com/7z8vSgeTDq0AAAAd/tenor.gif",
+        "vida": 28000,
+        "tempo": 600,
+        "dano_min": 10,
+        "dano_max": 28,
+        "recompensa_participou": 1,
+        "recompensa_top": 3,
+        "recompensa_final": 2,
+        "dano_falha": 8,
+        "agressividade": 1,
+        "agressividade_max": 6,
+        "chance_ataque": 18,
+        "chance_habilidade": 30,
+        "habilidade": "grito",
+        "dano_habilidade": 16,
+        "drop_lendario": "Olhar da Rainha das Maldições",
+    },
+]
 
 
-def canal_valido(interaction: discord.Interaction):
-    return interaction.channel_id == CANAL_ABATE_ID
-
-
-def avatar_bot(bot: commands.Bot):
-    if bot.user and bot.user.avatar:
-        return bot.user.avatar.url
+def buscar_boss(nome: str):
+    if not nome:
+        return None
+    nome = nome.lower().strip()
+    for boss in BOSSES:
+        if boss["nome"].lower() == nome:
+            return boss
     return None
-
-
-def gerar_barra_vidas(vidas: int):
-    vidas = max(0, min(VIDAS_MAXIMAS, vidas))
-    cheios = round((vidas / VIDAS_MAXIMAS) * 10)
-    vazios = 10 - cheios
-    return "❤️" * cheios + "🖤" * vazios
-
-
-def formatar_status(status: str):
-    if status == "vivo":
-        return "🟢 VIVO"
-    if status == "eliminado":
-        return "💀 ELIMINADO"
-    return status.upper()
-
-
-def embaralhar_alvos(jogadores):
-    ids = [j[0] for j in jogadores]
-
-    if len(ids) < 2:
-        return {}
-
-    alvos = ids.copy()
-
-    for _ in range(50):
-        random.shuffle(alvos)
-        if all(jogador_id != alvo_id for jogador_id, alvo_id in zip(ids, alvos)):
-            return dict(zip(ids, alvos))
-
-    alvos = ids[1:] + ids[:1]
-    return dict(zip(ids, alvos))
 
 
 async def enviar_log(guild: discord.Guild, embed: discord.Embed):
     if not guild:
         return
-
-    canal = guild.get_channel(CANAL_LOGS_ID)
+    canal = guild.get_channel(CANAL_LOG_MALDICOES_ID)
     if canal:
         await canal.send(embed=embed)
 
 
-async def anunciar_evento(guild: discord.Guild, embed: discord.Embed | None = None, mensagem: str | None = None):
-    if not guild:
-        return
-
-    canal = guild.get_channel(CANAL_EVENTOS_ID)
-    if canal:
-        if embed:
-            await canal.send(embed=embed)
-        elif mensagem:
-            await canal.send(mensagem)
-
-
-class PainelAbate(discord.ui.View):
-    def __init__(self, bot: commands.Bot):
-        super().__init__(timeout=None)
-        self.bot = bot
-
-    @discord.ui.button(
-        label="Entrar no Ritual",
-        emoji="🩸",
-        style=discord.ButtonStyle.danger,
-        custom_id="abate_entrar"
+def resetar_vidas_todos():
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE jogadores
+        SET vidas = %s, status = 'vivo', alvo_id = NULL
+        """,
+        (VIDAS_MAXIMAS,)
     )
-    async def entrar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not canal_valido(interaction):
-            await interaction.response.send_message(
-                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
-                ephemeral=True
-            )
-            return
+    conn.commit()
+    conn.close()
 
-        jogador_existente = buscar_jogador(interaction.user.id)
 
-        if jogador_existente:
-            await interaction.response.send_message(
-                "🩸 Você já está dentro do ritual.",
-                ephemeral=True
-            )
-            return
+def sortear_drop(boss_nome: str, boss_drop_lendario: str):
+    chance = random.randint(1, 100)
+    if chance <= 5:
+        return {"raridade": "LENDÁRIO", "emoji": "🌟", "nome": boss_drop_lendario, "bonus_abate": 8, "fragmentos": 80}
+    if chance <= 18:
+        return {"raridade": "ÉPICO", "emoji": "🟣", "nome": f"Relíquia de {boss_nome}", "bonus_abate": 5, "fragmentos": 45}
+    if chance <= 45:
+        return {"raridade": "RARO", "emoji": "🔵", "nome": f"Marca de {boss_nome}", "bonus_abate": 3, "fragmentos": 25}
+    return {"raridade": "COMUM", "emoji": "⚪", "nome": ITEM_FRAGMENTO, "bonus_abate": 1, "fragmentos": 15}
 
-        registrar_jogador(interaction.user.id, interaction.user.name)
+
+def aplicar_dano_com_escudo(user_id: int, dano: int):
+    if consumir_buff(user_id, "escudo", 1):
+        dano = max(0, dano - 8)
+
+    if dano <= 0:
+        return buscar_jogador(user_id), 0, True
+
+    return remover_vida(user_id, dano), dano, False
+
+
+class BossView(discord.ui.View):
+    def __init__(self, boss):
+        super().__init__(timeout=boss["tempo"])
+        self.boss = boss.copy()
+        self.vida = self.boss["vida"]
+        self.max_vida = self.boss["vida"]
+        self.danos = {}
+        self.finalizado = False
+        self.mensagem = None
+        self.ultimo_hit = None
+        self.agressividade = self.boss.get("agressividade", 1)
+        self.agressividade_max = self.boss.get("agressividade_max", 5)
+        self.turnos = 0
+
+    def barra(self):
+        if self.max_vida <= 0:
+            return "⬛" * 10
+        pct = max(0, self.vida) / self.max_vida
+        cheio = max(1, round(pct * 10)) if pct > 0 else 0
+        if pct <= 0.10:
+            return "🔥" * cheio + "⬛" * (10 - cheio)
+        if pct <= 0.30:
+            return "🟧" * cheio + "⬛" * (10 - cheio)
+        if pct <= 0.60:
+            return "🟨" * cheio + "⬛" * (10 - cheio)
+        return "🟥" * cheio + "⬛" * (10 - cheio)
+
+    def estado_boss(self):
+        pct = max(0, self.vida) / self.max_vida
+        if pct <= 0.10:
+            return "🔥 **CRÍTICO — O boss está desesperado.**"
+        if pct <= 0.30:
+            return "🟧 **Fúria elevada — ataques mais perigosos.**"
+        if pct <= 0.60:
+            return "🟨 **Instável — a pressão está aumentando.**"
+        return "🟥 **Controle inicial — o boss ainda está firme.**"
+
+    def embed(self):
+        ranking = sorted(self.danos.items(), key=lambda x: x[1], reverse=True)[:5]
+        texto = ""
+        for i, (uid, dmg) in enumerate(ranking, start=1):
+            medalha = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else f"`#{i}`"
+            texto += f"{medalha} <@{uid}> — 💥 **{dmg}** dano\n"
+        if not texto:
+            texto = "Ninguém atacou ainda."
 
         embed = discord.Embed(
-            title="🩸 REGISTRO CRIADO",
+            title=f"💀 BOSS — {self.boss['nome']}",
             description=(
-                f"{interaction.user.mention}, você entrou no **Jogo do Abate**.\n\n"
-                f"❤️ **Vidas iniciais:** {VIDAS_MAXIMAS}\n"
-                "⚔️ **Abates:** 0\n"
-                "📜 **Contratos:** 0\n"
-                "🎯 **Alvo atual:** ainda não definido\n\n"
-                "> **Sobreviva. Cumpra. Elimine.**"
+                f"{self.boss['descricao']}\n\n"
+                f"❤️ **Vida:** `{max(0, self.vida)}/{self.max_vida}`\n"
+                f"{self.barra()}\n\n"
+                f"{self.estado_boss()}\n"
+                f"🔥 **Agressividade:** `{self.agressividade}/{self.agressividade_max}`\n"
+                f"⏳ Tempo limite: **{self.boss['tempo'] // 60} minutos**\n\n"
+                f"✨ Loja ativa: use `!comprar escudo` ou `!comprar furia` antes de atacar."
             ),
-            color=COR_ROXA
+            color=COR_VERMELHA
         )
+        embed.add_field(name="🏆 Ranking de Dano", value=texto, inline=False)
+        embed.set_image(url=self.boss["imagem"])
+        embed.set_footer(text="Família Sant's • Raid Boss")
+        return embed
 
-        if avatar_bot(self.bot):
-            embed.set_thumbnail(url=avatar_bot(self.bot))
+    async def enviar_ataque_temporario(self, canal, texto: str):
+        await canal.send(texto, delete_after=TEMPO_APAGAR_ATAQUE)
 
-        embed.set_footer(text="Família Sant's • RitualBot")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-        log = discord.Embed(
-            title="📜 NOVO PARTICIPANTE",
-            description=f"{interaction.user.mention} entrou no **Jogo do Abate**.",
-            color=COR_VERDE
-        )
-        log.set_thumbnail(url=interaction.user.display_avatar.url)
-        await enviar_log(interaction.guild, log)
-
-    @discord.ui.button(
-        label="Meu Registro",
-        emoji="👁️",
-        style=discord.ButtonStyle.secondary,
-        custom_id="abate_perfil"
-    )
-    async def perfil(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not canal_valido(interaction):
-            await interaction.response.send_message(
-                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
-                ephemeral=True
-            )
+    async def usar_habilidade(self, interaction: discord.Interaction):
+        habilidade = self.boss.get("habilidade")
+        dano_base = self.boss.get("dano_habilidade", 0)
+        if not habilidade or dano_base <= 0:
             return
-
-        jogador = buscar_jogador(interaction.user.id)
-
-        if not jogador:
-            await interaction.response.send_message(
-                "Você ainda não entrou no Jogo do Abate.",
-                ephemeral=True
-            )
-            return
-
-        user_id, username, vidas, abates, contratos, status, alvo_id, familia = jogador
-
-        embed = discord.Embed(
-            title="👁️ REGISTRO DO PARTICIPANTE",
-            description=f"Participante: {interaction.user.mention}\nStatus: **{formatar_status(status)}**",
-            color=COR_ROXA if status == "vivo" else COR_VERMELHA
-        )
-
-        embed.add_field(
-            name="❤️ Vidas",
-            value=f"{gerar_barra_vidas(vidas)} `({vidas}/{VIDAS_MAXIMAS})`",
-            inline=False
-        )
-        embed.add_field(name="⚔️ Abates", value=str(abates), inline=True)
-        embed.add_field(name="📜 Contratos", value=str(contratos), inline=True)
-        embed.add_field(name="🏯 Família", value=familia, inline=True)
-        embed.add_field(
-            name="🎯 Alvo Atual",
-            value=f"<@{alvo_id}>" if alvo_id else "`Aguardando marcação...`",
-            inline=False
-        )
-
-        evento = buscar_evento_ativo()
-        if evento:
-            _, nome, descricao, multiplicador, dano_extra, ativo = evento
-            embed.add_field(
-                name="💀 Evento Ativo",
-                value=f"**{nome}**\n{descricao}",
-                inline=False
-            )
-
-        embed.set_thumbnail(url=interaction.user.display_avatar.url)
-        embed.set_footer(text="Família Sant's • Registro do Ritual")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(
-        label="Ranking",
-        emoji="📊",
-        style=discord.ButtonStyle.primary,
-        custom_id="abate_ranking"
-    )
-    async def ranking(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not canal_valido(interaction):
-            await interaction.response.send_message(
-                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
-                ephemeral=True
-            )
-            return
-
-        jogadores = listar_ranking()
-
-        if not jogadores:
-            await interaction.response.send_message("Nenhum participante entrou ainda.", ephemeral=True)
-            return
-
-        descricao = ""
-        medalhas = ["🥇", "🥈", "🥉"]
-
-        for pos, jogador in enumerate(jogadores, start=1):
-            user_id, username, vidas, abates, contratos, status, familia = jogador
-            simbolo = medalhas[pos - 1] if pos <= 3 else f"`#{pos}`"
-            descricao += (
-                f"{simbolo} <@{user_id}>\n"
-                f"⚔️ **{abates}** abates • 📜 **{contratos}** contratos • "
-                f"❤️ **{vidas}/{VIDAS_MAXIMAS}** • {formatar_status(status)}\n\n"
-            )
-
-        embed = discord.Embed(
-            title="📊 RANKING DO ABATE",
-            description=descricao,
-            color=COR_DOURADA
-        )
-        embed.set_footer(text="Atualizado em tempo real • RitualBot")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(
-        label="Regras",
-        emoji="📜",
-        style=discord.ButtonStyle.secondary,
-        custom_id="abate_regras"
-    )
-    async def regras(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not canal_valido(interaction):
-            await interaction.response.send_message(
-                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
-                ephemeral=True
-            )
-            return
-
-        embed = discord.Embed(
-            title="📜 REGULAMENTO DO RITUAL",
-            description=(
-                "**Art. 1º — Da Entrada**\n"
-                f"Todo participante inicia com **{VIDAS_MAXIMAS} vidas**.\n\n"
-                "**Art. 2º — Dos Abates**\n"
-                "Um abate só será válido quando registrado pela staff.\n\n"
-                "**Art. 3º — Dos Alvos Secretos**\n"
-                "A staff pode sortear alvos privados. Cada participante recebe seu alvo por DM.\n\n"
-                "**Art. 4º — Dos Eventos Especiais**\n"
-                "Eventos podem dobrar abates, aumentar dano ou alterar a dinâmica do jogo.\n\n"
-                "**Art. 5º — Da Eliminação**\n"
-                "Ao atingir **0 vidas**, o participante será eliminado.\n\n"
-                "> **Sobreviva. Cumpra. Elimine.**"
-            ),
-            color=COR_ROXA
-        )
-
-        if avatar_bot(self.bot):
-            embed.set_thumbnail(url=avatar_bot(self.bot))
-
-        embed.set_footer(text="Família Sant's • Leis do Ritual")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(
-        label="Status do Ritual",
-        emoji="🧿",
-        style=discord.ButtonStyle.success,
-        custom_id="abate_status"
-    )
-    async def status_ritual(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not canal_valido(interaction):
-            await interaction.response.send_message(
-                "🚫 Use este painel apenas no canal do **Jogo do Abate**.",
-                ephemeral=True
-            )
+        if random.randint(1, 100) > self.boss.get("chance_habilidade", 25):
             return
 
         jogadores = listar_jogadores_vivos()
-        evento = buscar_evento_ativo()
+        if not jogadores:
+            return
+
+        dano = max(1, int((dano_base * 0.6) + self.agressividade))
+
+        if habilidade == "corte_area":
+            alvos = random.sample(jogadores, min(3, len(jogadores)))
+            texto = f"🔥 **{self.boss['nome']} usou CORTE EM ÁREA!**\n"
+            for jogador in alvos:
+                user_id = jogador[0]
+                resultado, dano_final, protegido = aplicar_dano_com_escudo(user_id, dano)
+                if resultado:
+                    vidas = resultado[2]
+                    status = resultado[5]
+                    texto += f"🩸 <@{user_id}> recebeu **-{dano_final}** dano"
+                    if protegido:
+                        texto += " 🛡️ **Escudo ativado**"
+                    texto += f". ❤️ `{vidas}/{VIDAS_MAXIMAS}`"
+                    if status == "eliminado":
+                        texto += " ☠️ **ELIMINADO**"
+                    texto += "\n"
+            await self.enviar_ataque_temporario(interaction.channel, texto)
+
+        elif habilidade == "adaptacao":
+            self.agressividade = min(self.agressividade + 1, self.agressividade_max)
+            self.boss["dano_min"] += 1
+            self.boss["dano_max"] += 1
+            await self.enviar_ataque_temporario(
+                interaction.channel,
+                f"⚙️ **{self.boss['nome']} se adaptou ao dano recebido!**\n🔥 Agressividade: **{self.agressividade}/{self.agressividade_max}**"
+            )
+
+        elif habilidade == "grito":
+            resultado, dano_final, protegido = aplicar_dano_com_escudo(interaction.user.id, dano)
+            if resultado:
+                vidas = resultado[2]
+                status = resultado[5]
+                texto = (
+                    f"👁️ **{self.boss['nome']} soltou um GRITO AMALDIÇOADO!**\n"
+                    f"🎯 Alvo: {interaction.user.mention}\n"
+                    f"🩸 Dano: **-{dano_final}**"
+                )
+                if protegido:
+                    texto += "\n🛡️ Escudo ativado."
+                texto += f"\n❤️ Vida restante: **{vidas}/{VIDAS_MAXIMAS}**"
+                if status == "eliminado":
+                    texto += "\n☠️ **ELIMINADO**"
+                await self.enviar_ataque_temporario(interaction.channel, texto)
+
+        elif habilidade == "pacto_eterno":
+            alvos = random.sample(jogadores, min(2, len(jogadores)))
+            cura = min(5000, self.max_vida - self.vida)
+            self.vida += cura
+            texto = f"💜 **{self.boss['nome']} ativou PACTO ETERNO!**\n❤️ O boss recuperou **{cura}** de vida.\n"
+            for jogador in alvos:
+                user_id = jogador[0]
+                resultado, dano_final, protegido = aplicar_dano_com_escudo(user_id, dano)
+                if resultado:
+                    vidas = resultado[2]
+                    status = resultado[5]
+                    texto += f"🩸 <@{user_id}> recebeu **-{dano_final}** dano"
+                    if protegido:
+                        texto += " 🛡️ **Escudo ativado**"
+                    texto += f". ❤️ `{vidas}/{VIDAS_MAXIMAS}`"
+                    if status == "eliminado":
+                        texto += " ☠️ **ELIMINADO**"
+                    texto += "\n"
+            await self.enviar_ataque_temporario(interaction.channel, texto)
+
+    async def finalizar(self, channel: discord.TextChannel, guild: discord.Guild):
+        global BOSS_ATIVO
+        BOSS_ATIVO = None
+
+        if not self.danos:
+            return
+
+        top = max(self.danos, key=self.danos.get)
+
+        for uid in self.danos:
+            if buscar_jogador(uid):
+                adicionar_abate(uid, self.boss["recompensa_participou"])
+                adicionar_item(uid, ITEM_FRAGMENTO, 10)
+
+        if buscar_jogador(top):
+            adicionar_abate(top, self.boss["recompensa_top"])
+
+        if self.ultimo_hit and buscar_jogador(self.ultimo_hit):
+            adicionar_abate(self.ultimo_hit, self.boss["recompensa_final"])
+
+        drop_top = sortear_drop(self.boss["nome"], self.boss.get("drop_lendario", "Artefato Lendário"))
+        drop_final = sortear_drop(self.boss["nome"], self.boss.get("drop_lendario", "Artefato Lendário"))
+
+        adicionar_item(top, drop_top["nome"], 1)
+        adicionar_item(top, ITEM_FRAGMENTO, drop_top["fragmentos"])
+
+        if self.ultimo_hit:
+            adicionar_item(self.ultimo_hit, drop_final["nome"], 1)
+            adicionar_item(self.ultimo_hit, ITEM_FRAGMENTO, drop_final["fragmentos"])
+
+        if buscar_jogador(top):
+            adicionar_abate(top, drop_top["bonus_abate"])
+        if self.ultimo_hit and buscar_jogador(self.ultimo_hit):
+            adicionar_abate(self.ultimo_hit, drop_final["bonus_abate"])
+
+        ranking = sorted(self.danos.items(), key=lambda x: x[1], reverse=True)[:5]
+        texto_ranking = ""
+        for i, (uid, dmg) in enumerate(ranking, start=1):
+            medalha = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else f"`#{i}`"
+            texto_ranking += f"{medalha} <@{uid}> — 💥 **{dmg}** dano\n"
 
         embed = discord.Embed(
-            title="🧿 STATUS DO RITUAL",
+            title="🏆 BOSS DERROTADO",
             description=(
-                f"👥 **Participantes vivos:** {len(jogadores)}\n"
-                f"💀 **Evento ativo:** {evento[1] if evento else 'Nenhum'}\n\n"
-                "🎯 **Alvos secretos:** disponíveis\n"
-                "💀 **Eventos especiais:** disponíveis\n\n"
-                "> O plano segue em andamento."
+                f"💀 **Boss:** {self.boss['nome']}\n"
+                f"🥇 **Maior dano:** <@{top}>\n"
+                f"⚔️ **Golpe final:** <@{self.ultimo_hit}>\n\n"
+                f"🎁 **Recompensas fixas:**\n"
+                f"• Participou: +{self.boss['recompensa_participou']} abate(s) + 🧩 10 fragmentos\n"
+                f"• Top dano: +{self.boss['recompensa_top']} abate(s)\n"
+                f"• Golpe final: +{self.boss['recompensa_final']} abate(s)"
             ),
-            color=COR_ROXA
+            color=COR_VERDE
         )
+        embed.add_field(name="📊 Ranking Final", value=texto_ranking, inline=False)
+        embed.add_field(
+            name="🎁 Drop do Maior Dano",
+            value=(
+                f"{drop_top['emoji']} **{drop_top['raridade']}**\n"
+                f"Item: **{drop_top['nome']}**\n"
+                f"🧩 Fragmentos: **+{drop_top['fragmentos']}**\n"
+                f"Bônus: +{drop_top['bonus_abate']} abate(s)\n"
+                f"Recebedor: <@{top}>"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="⚔️ Drop do Golpe Final",
+            value=(
+                f"{drop_final['emoji']} **{drop_final['raridade']}**\n"
+                f"Item: **{drop_final['nome']}**\n"
+                f"🧩 Fragmentos: **+{drop_final['fragmentos']}**\n"
+                f"Bônus: +{drop_final['bonus_abate']} abate(s)\n"
+                f"Recebedor: <@{self.ultimo_hit}>"
+            ),
+            inline=False
+        )
+        embed.set_footer(text="Família Sant's • Raid Boss Finalizado")
+        await channel.send(embed=embed)
+        await enviar_log(guild, embed)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    async def on_timeout(self):
+        global BOSS_ATIVO
+        if self.finalizado:
+            return
 
+        self.finalizado = True
+        BOSS_ATIVO = None
 
-class Abate(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.bot.add_view(PainelAbate(bot))
+        for item in self.children:
+            item.disabled = True
 
-    async def cog_app_command_error(self, interaction: discord.Interaction, error):
-        if isinstance(error, app_commands.CheckFailure):
-            mensagem = "🚫 Use este comando apenas no canal do **Jogo do Abate** ou verifique suas permissões."
+        if self.mensagem:
             try:
-                if interaction.response.is_done():
-                    await interaction.followup.send(mensagem, ephemeral=True)
-                else:
-                    await interaction.response.send_message(mensagem, ephemeral=True)
+                await self.mensagem.edit(embed=self.embed(), view=self)
             except Exception:
                 pass
-            return
-
-        raise error
-
-    @app_commands.command(
-        name="painel_abate",
-        description="Envia o painel principal do Jogo do Abate."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def painel_abate(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="🩸 JOGO DO ABATE — RITUAL PRINCIPAL",
-            description=(
-                "```ansi\n"
-                "\u001b[35mO ritual foi iniciado.\u001b[0m\n"
-                "```\n"
-                "A partir deste momento, cada escolha pode definir seu destino.\n\n"
-                "🎯 **Alvos secretos por DM**\n"
-                "📜 **Contratos e desafios**\n"
-                f"❤️ **Cada participante possui {VIDAS_MAXIMAS} vidas**\n"
-                "💀 **Eventos especiais podem alterar o jogo**\n"
-                "📊 **Ranking atualizado em tempo real**\n\n"
-                "> **Sobreviva. Cumpra. Elimine.**"
-            ),
-            color=COR_ROXA
-        )
-
-        embed.add_field(
-            name="⚠️ Aviso",
-            value="Alguns nomes serão marcados. Nem todos permanecerão de pé.",
-            inline=False
-        )
-
-        if avatar_bot(self.bot):
-            embed.set_thumbnail(url=avatar_bot(self.bot))
-
-        if BANNER_URL:
-            embed.set_image(url=BANNER_URL)
-
-        embed.set_footer(text="Família Sant's • RitualBot • O plano segue em andamento")
-
-        await interaction.response.defer(ephemeral=True)
-
-        await interaction.channel.send(
-            embed=embed,
-            view=PainelAbate(self.bot)
-        )
-
-        await interaction.followup.send(
-            "✅ Painel enviado com sucesso.",
-            ephemeral=True
-        )
-
-    @app_commands.command(
-        name="sortear_alvos",
-        description="Sorteia alvos secretos entre todos os jogadores vivos e envia por DM."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def sortear_alvos(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
 
         jogadores = listar_jogadores_vivos()
-
-        if len(jogadores) < 2:
-            await interaction.followup.send(
-                "É necessário ter pelo menos **2 jogadores vivos** para sortear alvos.",
-                ephemeral=True
-            )
-            return
-
-        mapa_alvos = embaralhar_alvos(jogadores)
-        enviados = 0
-        falhas = 0
-
-        for jogador_id, alvo_id in mapa_alvos.items():
-            definir_alvo(jogador_id, alvo_id)
-
-            jogador = interaction.guild.get_member(jogador_id)
-            alvo = interaction.guild.get_member(alvo_id)
-
-            if not jogador or not alvo:
-                falhas += 1
-                continue
-
-            embed_dm = discord.Embed(
-                title="🎯 ALVO SECRETO DEFINIDO",
-                description=(
-                    "Você recebeu um alvo dentro do **Jogo do Abate**.\n\n"
-                    f"🎯 **Seu alvo:** {alvo.mention}\n\n"
-                    "Elimine seu alvo em um desafio válido para receber reconhecimento no ritual.\n\n"
-                    "> **Não revele seu alvo. O plano depende do silêncio.**"
-                ),
-                color=COR_ROXA
-            )
-            embed_dm.set_thumbnail(url=alvo.display_avatar.url)
-            embed_dm.set_footer(text="RitualBot • Alvo secreto")
-
-            try:
-                await jogador.send(embed=embed_dm)
-                enviados += 1
-            except discord.Forbidden:
-                falhas += 1
-
-        embed = discord.Embed(
-            title="🎯 ALVOS SECRETOS SORTEADOS",
-            description=(
-                f"✅ **DMs enviadas:** {enviados}\n"
-                f"⚠️ **Falhas:** {falhas}\n\n"
-                "Os participantes vivos receberam seus alvos por mensagem privada."
-            ),
-            color=COR_VERDE
-        )
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-        anuncio = discord.Embed(
-            title="🎯 NOVOS ALVOS DEFINIDOS",
-            description=(
-                "Os alvos secretos foram sorteados.\n\n"
-                "Verifique sua DM.\n"
-                "> O plano depende do silêncio."
-            ),
-            color=COR_ROXA
-        )
-        await anunciar_evento(interaction.guild, embed=anuncio)
-
-        log = discord.Embed(
-            title="📜 LOG — ALVOS SORTEADOS",
-            description=(
-                f"✅ DMs enviadas: **{enviados}**\n"
-                f"⚠️ Falhas: **{falhas}**\n"
-                f"👤 Responsável: {interaction.user.mention}"
-            ),
-            color=COR_VERDE
-        )
-        await enviar_log(interaction.guild, log)
-
-    @app_commands.command(
-        name="limpar_alvos",
-        description="Remove todos os alvos atuais dos jogadores."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def limpar_alvos_cmd(self, interaction: discord.Interaction):
-        limpar_alvos()
-
-        await interaction.response.send_message(
-            "🎯 Todos os alvos secretos foram removidos.",
-            ephemeral=True
-        )
-
-        log = discord.Embed(
-            title="📜 LOG — ALVOS LIMPOS",
-            description=f"Todos os alvos foram removidos por {interaction.user.mention}.",
-            color=COR_ROXA
-        )
-        await enviar_log(interaction.guild, log)
-
-    @app_commands.command(
-        name="meu_alvo",
-        description="Mostra seu alvo secreto atual."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    async def meu_alvo(self, interaction: discord.Interaction):
-        jogador = buscar_jogador(interaction.user.id)
-
-        if not jogador:
-            await interaction.response.send_message(
-                "Você ainda não entrou no Jogo do Abate.",
-                ephemeral=True
-            )
-            return
-
-        alvo_id = jogador[6]
-
-        if not alvo_id:
-            await interaction.response.send_message(
-                "Você ainda não possui alvo definido.",
-                ephemeral=True
-            )
-            return
-
-        alvo = interaction.guild.get_member(alvo_id)
-
-        embed = discord.Embed(
-            title="🎯 SEU ALVO SECRETO",
-            description=(
-                f"🎯 **Alvo:** {alvo.mention if alvo else f'<@{alvo_id}>'}\n\n"
-                "> O silêncio mantém o plano vivo."
-            ),
-            color=COR_ROXA
-        )
-
-        if alvo:
-            embed.set_thumbnail(url=alvo.display_avatar.url)
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(
-        name="criar_evento_abate",
-        description="Cria um evento especial para o Jogo do Abate."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def criar_evento_abate(
-        self,
-        interaction: discord.Interaction,
-        nome: str,
-        descricao: str,
-        multiplicador_abate: app_commands.Range[int, 1, 5] = 1,
-        dano_extra: app_commands.Range[int, 0, 10] = 0
-    ):
-        criar_evento(nome, descricao, multiplicador_abate, dano_extra)
-
-        embed = discord.Embed(
-            title="💀 EVENTO ESPECIAL CRIADO",
-            description=(
-                f"**Nome:** {nome}\n"
-                f"**Descrição:** {descricao}\n"
-                f"**Multiplicador de abate:** x{multiplicador_abate}\n"
-                f"**Dano extra:** +{dano_extra}\n\n"
-                "Use `/listar_eventos_abate` para ver o ID e ativar."
-            ),
-            color=COR_ROXA
-        )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-        log = discord.Embed(
-            title="📜 LOG — EVENTO CRIADO",
-            description=(
-                f"**Nome:** {nome}\n"
-                f"**Multiplicador:** x{multiplicador_abate}\n"
-                f"**Dano extra:** +{dano_extra}\n"
-                f"**Criado por:** {interaction.user.mention}"
-            ),
-            color=COR_ROXA
-        )
-        await enviar_log(interaction.guild, log)
-
-    @app_commands.command(
-        name="listar_eventos_abate",
-        description="Lista os eventos especiais criados."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def listar_eventos_abate(self, interaction: discord.Interaction):
-        eventos = listar_eventos()
-
-        if not eventos:
-            await interaction.response.send_message("Nenhum evento criado ainda.", ephemeral=True)
-            return
-
-        descricao = ""
-
-        for evento in eventos[:10]:
-            evento_id, nome, desc, mult, dano, ativo = evento
-            status = "🟢 ATIVO" if ativo else "⚫ INATIVO"
-            descricao += (
-                f"`ID {evento_id}` — **{nome}** {status}\n"
-                f"↳ x{mult} abate • +{dano} dano\n"
-                f"↳ {desc}\n\n"
-            )
-
-        embed = discord.Embed(
-            title="💀 EVENTOS DO ABATE",
-            description=descricao,
-            color=COR_ROXA
-        )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(
-        name="ativar_evento_abate",
-        description="Ativa um evento especial pelo ID."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def ativar_evento_abate(self, interaction: discord.Interaction, evento_id: int):
-        ativar_evento(evento_id)
-        evento = buscar_evento_ativo()
-
-        if not evento:
-            await interaction.response.send_message("Evento não encontrado.", ephemeral=True)
-            return
-
-        _, nome, descricao, multiplicador, dano_extra, ativo = evento
-
-        embed = discord.Embed(
-            title="💀 EVENTO ESPECIAL ATIVADO",
-            description=(
-                f"## {nome}\n"
-                f"{descricao}\n\n"
-                f"⚔️ **Abates:** x{multiplicador}\n"
-                f"🩸 **Dano extra:** +{dano_extra}\n\n"
-                "> As regras do ritual foram alteradas."
-            ),
-            color=COR_VERMELHA
-        )
-
-        await interaction.response.send_message(embed=embed)
-        await anunciar_evento(interaction.guild, embed=embed)
-
-        log = discord.Embed(
-            title="📜 LOG — EVENTO ATIVADO",
-            description=(
-                f"**Evento:** {nome}\n"
-                f"**ID:** {evento_id}\n"
-                f"**Ativado por:** {interaction.user.mention}"
-            ),
-            color=COR_VERMELHA
-        )
-        await enviar_log(interaction.guild, log)
-
-    @app_commands.command(
-        name="encerrar_evento_abate",
-        description="Encerra qualquer evento especial ativo."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def encerrar_evento_abate(self, interaction: discord.Interaction):
-        encerrar_eventos()
-
-        embed = discord.Embed(
-            title="🧿 EVENTO ENCERRADO",
-            description="As regras especiais foram removidas. O ritual voltou ao estado normal.",
-            color=COR_ROXA
-        )
-
-        await interaction.response.send_message(embed=embed)
-        await anunciar_evento(interaction.guild, embed=embed)
-
-        log = discord.Embed(
-            title="📜 LOG — EVENTO ENCERRADO",
-            description=f"Evento encerrado por {interaction.user.mention}.",
-            color=COR_ROXA
-        )
-        await enviar_log(interaction.guild, log)
-
-    @app_commands.command(
-        name="registrar_abate",
-        description="Registra um abate e remove vida do perdedor."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def registrar_abate_cmd(
-        self,
-        interaction: discord.Interaction,
-        vencedor: discord.Member,
-        perdedor: discord.Member,
-        motivo: str = "Abate registrado pela staff"
-    ):
-        registrar_jogador(vencedor.id, vencedor.name)
-        registrar_jogador(perdedor.id, perdedor.name)
-
-        evento = buscar_evento_ativo()
-
-        multiplicador = 1
-        dano_total = 1
-        evento_nome = None
-
-        if evento:
-            _, evento_nome, descricao, multiplicador, dano_extra, ativo = evento
-            dano_total += dano_extra
-
-        adicionar_abate(vencedor.id, quantidade=multiplicador)
-        jogador_perdedor = remover_vida(perdedor.id, quantidade=dano_total)
-
-        vidas = jogador_perdedor[2]
-        status = jogador_perdedor[5]
-
-        jogador_vencedor = buscar_jogador(vencedor.id)
-        alvo_do_vencedor = jogador_vencedor[6] if jogador_vencedor else None
-        era_alvo = alvo_do_vencedor == perdedor.id
-
-        if era_alvo:
-            definir_alvo(vencedor.id, None)
-
-        embed = discord.Embed(
-            title="⚔️ ABATE REGISTRADO",
-            description=(
-                f"🏆 **Vencedor:** {vencedor.mention}\n"
-                f"🩸 **Perdedor:** {perdedor.mention}\n"
-                f"📌 **Motivo:** {motivo}\n\n"
-                f"⚔️ **Abates recebidos:** +{multiplicador}\n"
-                f"🩸 **Dano aplicado:** -{dano_total} vida(s)\n"
-                f"❤️ **Vidas restantes:** {gerar_barra_vidas(vidas)} `({vidas}/{VIDAS_MAXIMAS})`"
-            ),
-            color=COR_VERMELHA
-        )
-
-        if evento_nome:
-            embed.add_field(
-                name="💀 Evento Ativo",
-                value=f"Este abate foi afetado por **{evento_nome}**.",
-                inline=False
-            )
-
-        if era_alvo:
-            embed.add_field(
-                name="🎯 ALVO CONCLUÍDO",
-                value=f"{vencedor.mention} eliminou seu alvo secreto.",
-                inline=False
-            )
-
-        if status == "eliminado":
-            embed.add_field(
-                name="💀 ELIMINAÇÃO CONFIRMADA",
-                value=f"{perdedor.mention} foi eliminado do **Jogo do Abate**.",
-                inline=False
-            )
-
-        embed.set_thumbnail(url=perdedor.display_avatar.url)
-        embed.set_footer(text="RitualBot • Registro oficial de abate")
-
-        await interaction.response.send_message(embed=embed)
-
-        log = discord.Embed(
-            title="📜 LOG — ABATE REGISTRADO",
-            description=(
-                f"🏆 **Vencedor:** {vencedor.mention}\n"
-                f"🩸 **Perdedor:** {perdedor.mention}\n"
-                f"📌 **Motivo:** {motivo}\n"
-                f"⚔️ **Abates recebidos:** +{multiplicador}\n"
-                f"🩸 **Dano aplicado:** -{dano_total}\n"
-                f"❤️ **Vidas restantes:** {vidas}/{VIDAS_MAXIMAS}\n"
-                f"👤 **Registrado por:** {interaction.user.mention}"
-            ),
-            color=COR_VERDE
-        )
-
-        if era_alvo:
-            log.add_field(
-                name="🎯 Alvo secreto concluído",
-                value=f"{vencedor.mention} concluiu o alvo contra {perdedor.mention}.",
-                inline=False
-            )
-
-        if status == "eliminado":
-            log.add_field(
-                name="💀 Eliminação",
-                value=f"{perdedor.mention} foi eliminado do ritual.",
-                inline=False
-            )
-
-            anuncio_eliminacao = discord.Embed(
-                title="💀 ELIMINAÇÃO CONFIRMADA",
-                description=(
-                    f"{perdedor.mention} foi eliminado do **Jogo do Abate**.\n\n"
-                    "> O ritual cobrou seu preço."
-                ),
-                color=COR_VERMELHA
-            )
-            anuncio_eliminacao.set_thumbnail(url=perdedor.display_avatar.url)
-            await anunciar_evento(interaction.guild, embed=anuncio_eliminacao)
-
-        await enviar_log(interaction.guild, log)
-
-    @app_commands.command(
-        name="ranking_abate",
-        description="Mostra o ranking geral do Jogo do Abate."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    async def ranking_abate(self, interaction: discord.Interaction):
-        jogadores = listar_ranking()
-
         if not jogadores:
-            await interaction.response.send_message("Ainda não há jogadores no ranking.")
             return
 
-        descricao = ""
-        medalhas = ["🥇", "🥈", "🥉"]
+        atingidos = random.sample(jogadores, min(3, len(jogadores)))
+        dano_final = max(1, int((self.boss["dano_falha"] * 0.7) + self.agressividade))
+        texto_atingidos = ""
 
-        for pos, jogador in enumerate(jogadores, start=1):
-            user_id, username, vidas, abates, contratos, status, familia = jogador
-            simbolo = medalhas[pos - 1] if pos <= 3 else f"`#{pos}`"
-            descricao += (
-                f"{simbolo} <@{user_id}> — "
-                f"⚔️ **{abates}** | 📜 **{contratos}** | ❤️ **{vidas}/{VIDAS_MAXIMAS}** | {formatar_status(status)}\n"
+        for jogador in atingidos:
+            user_id = jogador[0]
+            resultado, dano_real, protegido = aplicar_dano_com_escudo(user_id, dano_final)
+            if resultado:
+                vidas = resultado[2]
+                status = resultado[5]
+                texto_atingidos += f"💀 <@{user_id}> perdeu **{dano_real}** vida(s)"
+                if protegido:
+                    texto_atingidos += " 🛡️ **Escudo ativado**"
+                texto_atingidos += f". ❤️ `{vidas}/{VIDAS_MAXIMAS}`"
+                if status == "eliminado":
+                    texto_atingidos += " ☠️ **ELIMINADO**"
+                texto_atingidos += "\n"
+
+        embed = discord.Embed(
+            title="☠️ O BOSS VENCEU",
+            description=f"💀 **{self.boss['nome']}** não foi derrotado a tempo.\n\n{texto_atingidos}",
+            color=COR_VERMELHA
+        )
+        embed.set_footer(text="Família Sant's • Raid Boss")
+
+        if self.mensagem:
+            await self.mensagem.channel.send(embed=embed)
+            await enviar_log(self.mensagem.guild, embed)
+
+    @discord.ui.button(label="Atacar", emoji="⚔️", style=discord.ButtonStyle.danger, custom_id="boss_atacar")
+    async def atacar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.finalizado:
+            await interaction.response.send_message("💀 Esse boss já foi finalizado.", ephemeral=True)
+            return
+
+        jogador = buscar_jogador(interaction.user.id)
+        if not jogador:
+            await interaction.response.send_message("🚫 Você precisa entrar no **Jogo do Abate** antes de atacar bosses.", ephemeral=True)
+            return
+
+        if jogador[5] != "vivo":
+            await interaction.response.send_message("💀 Você está eliminado e não pode atacar bosses.", ephemeral=True)
+            return
+
+        self.turnos += 1
+        if self.turnos % 8 == 0 and self.agressividade < self.agressividade_max:
+            self.agressividade += 1
+
+        dano = random.randint(self.boss["dano_min"], self.boss["dano_max"])
+
+        if consumir_buff(interaction.user.id, "furia", 1):
+            dano += random.randint(25, 60)
+            await interaction.channel.send(
+                f"🔥 {interaction.user.mention} ativou **Fúria Amaldiçoada** e causou dano extra!",
+                delete_after=5
             )
 
-        embed = discord.Embed(
-            title="📊 RANKING DO ABATE",
-            description=descricao,
-            color=COR_DOURADA
-        )
-        embed.set_footer(text="RitualBot • Ranking oficial")
+        self.vida -= dano
+        self.danos[interaction.user.id] = self.danos.get(interaction.user.id, 0) + dano
+        self.ultimo_hit = interaction.user.id
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.edit_message(embed=self.embed(), view=self)
 
-    @app_commands.command(
-        name="resetar_abate",
-        description="Reseta todos os dados do Jogo do Abate."
-    )
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @app_commands.check(canal_valido)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def resetar_abate_cmd(self, interaction: discord.Interaction):
-        resetar_jogo()
+        if random.randint(1, 100) <= self.boss.get("chance_ataque", 20):
+            dano_boss = random.randint(
+                max(1, int(self.boss["dano_falha"] * 0.4)),
+                max(2, int(self.boss["dano_falha"] * 0.7))
+            ) + self.agressividade
 
-        embed = discord.Embed(
-            title="🩸 RITUAL RESETADO",
-            description="Todos os registros do **Jogo do Abate** foram apagados.",
-            color=COR_VERMELHA
-        )
+            resultado, dano_real, protegido = aplicar_dano_com_escudo(interaction.user.id, dano_boss)
+            if resultado:
+                vidas = resultado[2]
+                status = resultado[5]
+                texto = (
+                    f"💢 **{self.boss['nome']} contra-atacou!**\n"
+                    f"🎯 Alvo: {interaction.user.mention}\n"
+                    f"🩸 Dano: **-{dano_real}**"
+                )
+                if protegido:
+                    texto += "\n🛡️ Escudo ativado."
+                texto += f"\n❤️ Vida restante: **{vidas}/{VIDAS_MAXIMAS}**"
+                if status == "eliminado":
+                    texto += "\n☠️ **ELIMINADO**"
+                await self.enviar_ataque_temporario(interaction.channel, texto)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await self.usar_habilidade(interaction)
 
-        log = discord.Embed(
-            title="📜 LOG — RITUAL RESETADO",
-            description=f"O Jogo do Abate foi resetado por {interaction.user.mention}.",
-            color=COR_VERMELHA
-        )
-        await enviar_log(interaction.guild, log)
+        if self.vida <= 0:
+            self.vida = 0
+            self.finalizado = True
+            for item in self.children:
+                item.disabled = True
+            try:
+                await self.mensagem.edit(embed=self.embed(), view=self)
+            except Exception:
+                pass
+            await self.finalizar(interaction.channel, interaction.guild)
 
-    @commands.command(name="resetar")
+
+class Boss(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        criar_tabelas_economia()
+
+    @commands.command(name="boss")
     @commands.has_permissions(administrator=True)
-    async def resetar_prefix(self, ctx: commands.Context):
+    async def boss(self, ctx, *, nome=None):
+        global BOSS_ATIVO
+
         try:
             await ctx.message.delete()
-        except discord.Forbidden:
-            pass
-        except discord.HTTPException:
+        except Exception:
             pass
 
-        resetar_jogo()
-
-        embed = discord.Embed(
-            title="🔄 JOGO DO ABATE RESETADO",
-            description=(
-                "Todos os registros do **Jogo do Abate** foram resetados.\n\n"
-                f"❤️ Os próximos jogadores entrarão com **{VIDAS_MAXIMAS} vidas**.\n"
-                "⚔️ Abates zerados.\n"
-                "🎯 Alvos removidos.\n\n"
-                "> O ritual foi reiniciado."
-            ),
-            color=COR_VERMELHA
-        )
-
-        await ctx.send(embed=embed, delete_after=15)
-
-        log = discord.Embed(
-            title="📜 LOG — RITUAL RESETADO",
-            description=f"O Jogo do Abate foi resetado por {ctx.author.mention} usando `!resetar`.",
-            color=COR_VERMELHA
-        )
-        await enviar_log(ctx.guild, log)
-
-    @commands.command(name="painel_abate")
-    @commands.has_permissions(administrator=True)
-    async def painel_abate_prefix(self, ctx: commands.Context):
-        if ctx.channel.id != CANAL_ABATE_ID:
+        if BOSS_ATIVO is not None:
+            await ctx.send("⚠️ Já existe um **boss ativo** no servidor.", delete_after=12)
             return
 
+        boss = buscar_boss(nome) if nome else random.choice(BOSSES)
+
+        if not boss:
+            nomes = ", ".join([b["nome"] for b in BOSSES])
+            await ctx.send(f"❌ Boss não encontrado.\nUse: `{nomes}`", delete_after=10)
+            return
+
+        view = BossView(boss)
+        msg = await ctx.send(embed=view.embed(), view=view)
+        view.mensagem = msg
+        BOSS_ATIVO = view
+
+    @commands.command(name="limpar_boss")
+    @commands.has_permissions(administrator=True)
+    async def limpar_boss(self, ctx):
+        global BOSS_ATIVO
         try:
             await ctx.message.delete()
-        except discord.Forbidden:
+        except Exception:
             pass
-        except discord.HTTPException:
-            pass
+        BOSS_ATIVO = None
+        await ctx.send("🧹 Boss ativo limpo manualmente.", delete_after=10)
 
-        embed = discord.Embed(
-            title="🩸 JOGO DO ABATE — RITUAL PRINCIPAL",
-            description=(
-                "```ansi\n"
-                "\u001b[35mO ritual foi iniciado.\u001b[0m\n"
-                "```\n"
-                "A partir deste momento, cada escolha pode definir seu destino.\n\n"
-                "🎯 **Alvos secretos por DM**\n"
-                "📜 **Contratos e desafios**\n"
-                f"❤️ **Cada participante possui {VIDAS_MAXIMAS} vidas**\n"
-                "💀 **Eventos especiais podem alterar o jogo**\n"
-                "📊 **Ranking atualizado em tempo real**\n\n"
-                "> **Sobreviva. Cumpra. Elimine.**"
-            ),
-            color=COR_ROXA
+    @commands.command(name="resetar_vida", aliases=["vidas"])
+    @commands.has_permissions(administrator=True)
+    async def resetar_vida(self, ctx):
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+        resetar_vidas_todos()
+        await ctx.send(
+            f"❤️ Vidas restauradas para **{VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}**.",
+            delete_after=12
         )
 
-        embed.add_field(
-            name="⚠️ Aviso",
-            value="Alguns nomes serão marcados. Nem todos permanecerão de pé.",
-            inline=False
-        )
-
-        if avatar_bot(self.bot):
-            embed.set_thumbnail(url=avatar_bot(self.bot))
-
-        if BANNER_URL:
-            embed.set_image(url=BANNER_URL)
-
-        embed.set_footer(text="Família Sant's • RitualBot • O plano segue em andamento")
-
-        await ctx.send(embed=embed, view=PainelAbate(self.bot))
+    @commands.command(name="resetar_tudo", aliases=["reset_tudo"])
+    @commands.has_permissions(administrator=True)
+    async def resetar_tudo(self, ctx):
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+        resetar_jogo()
+        await ctx.send("🩸 **Jogo do Abate resetado completamente.**", delete_after=12)
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Abate(bot))
+async def setup(bot):
+    await bot.add_cog(Boss(bot))

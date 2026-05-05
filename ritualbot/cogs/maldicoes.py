@@ -1,6 +1,5 @@
 import random
 import asyncio
-import sqlite3
 import datetime
 import discord
 from discord.ext import commands
@@ -14,6 +13,21 @@ from utils.db import (
     conectar,
 )
 
+from utils.economia import (
+    criar_tabelas_economia,
+    adicionar_vitoria,
+    pegar_vitorias,
+    pegar_ranking,
+    resetar_ranking_periodo,
+    pegar_corrupcao,
+    adicionar_corrupcao,
+    reduzir_corrupcao,
+    adicionar_item,
+    adicionar_buff,
+    consumir_buff,
+    quantidade_buff,
+)
+
 COR_ROXA_JUJUTSU = 0x6A00FF
 COR_VERMELHA = 0xE63946
 COR_VERDE = 0x2ECC71
@@ -23,21 +37,19 @@ GUILD_ID = 1480334256763961465
 CANAL_MALDICOES_ID = 1499600179244830730
 CANAL_LOG_MALDICOES_ID = 1500543560834089272
 
-DB_MALDICOES = "maldicoes.db"
-
 VIDAS_MAXIMAS = 750
 
 TEMPO_MINIMO = 600
 TEMPO_MAXIMO = 2700
-
 TEMPO_MADRUGADA_MIN = 300
 TEMPO_MADRUGADA_MAX = 1200
 
 TEMPO_EXPIRACAO = 300
 TEMPO_DELETAR_FALHA = 8
-TEMPO_DELETAR_VITORIA = 25
 COOLDOWN_EXORCIZAR = 5
 AVISO_EXPIRACAO = 60
+
+ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
 
 CARGOS_PROGRESSAO = [
     (50, 1500547442003673220),
@@ -57,6 +69,9 @@ MALDICOES = [
         "bonus_abate": 0,
         "dano_falha": 1,
         "dano_expiracao": 1,
+        "corrupcao_falha": 1,
+        "fragmentos_min": 5,
+        "fragmentos_max": 12,
     },
     {
         "nome": "Maldição Especial",
@@ -68,6 +83,9 @@ MALDICOES = [
         "bonus_abate": 1,
         "dano_falha": 2,
         "dano_expiracao": 2,
+        "corrupcao_falha": 2,
+        "fragmentos_min": 10,
+        "fragmentos_max": 20,
     },
     {
         "nome": "Mahito",
@@ -79,6 +97,9 @@ MALDICOES = [
         "bonus_abate": 2,
         "dano_falha": 3,
         "dano_expiracao": 3,
+        "corrupcao_falha": 4,
+        "fragmentos_min": 20,
+        "fragmentos_max": 35,
     },
     {
         "nome": "Mahoraga",
@@ -90,6 +111,9 @@ MALDICOES = [
         "bonus_abate": 3,
         "dano_falha": 5,
         "dano_expiracao": 6,
+        "corrupcao_falha": 5,
+        "fragmentos_min": 25,
+        "fragmentos_max": 45,
     },
     {
         "nome": "Sukuna",
@@ -101,6 +125,9 @@ MALDICOES = [
         "bonus_abate": 5,
         "dano_falha": 7,
         "dano_expiracao": 8,
+        "corrupcao_falha": 7,
+        "fragmentos_min": 35,
+        "fragmentos_max": 60,
     },
     {
         "nome": "Jogo",
@@ -112,6 +139,9 @@ MALDICOES = [
         "bonus_abate": 2,
         "dano_falha": 4,
         "dano_expiracao": 4,
+        "corrupcao_falha": 3,
+        "fragmentos_min": 15,
+        "fragmentos_max": 30,
     },
     {
         "nome": "Hanami",
@@ -123,6 +153,9 @@ MALDICOES = [
         "bonus_abate": 2,
         "dano_falha": 3,
         "dano_expiracao": 3,
+        "corrupcao_falha": 3,
+        "fragmentos_min": 15,
+        "fragmentos_max": 30,
     },
     {
         "nome": "Dagon",
@@ -134,6 +167,9 @@ MALDICOES = [
         "bonus_abate": 2,
         "dano_falha": 3,
         "dano_expiracao": 3,
+        "corrupcao_falha": 3,
+        "fragmentos_min": 15,
+        "fragmentos_max": 30,
     },
     {
         "nome": "Choso",
@@ -145,6 +181,9 @@ MALDICOES = [
         "bonus_abate": 2,
         "dano_falha": 2,
         "dano_expiracao": 2,
+        "corrupcao_falha": 3,
+        "fragmentos_min": 15,
+        "fragmentos_max": 30,
     },
     {
         "nome": "Toji",
@@ -156,6 +195,9 @@ MALDICOES = [
         "bonus_abate": 3,
         "dano_falha": 5,
         "dano_expiracao": 5,
+        "corrupcao_falha": 4,
+        "fragmentos_min": 25,
+        "fragmentos_max": 45,
     },
     {
         "nome": "Rika",
@@ -167,111 +209,18 @@ MALDICOES = [
         "bonus_abate": 5,
         "dano_falha": 6,
         "dano_expiracao": 7,
-},
+        "corrupcao_falha": 5,
+        "fragmentos_min": 30,
+        "fragmentos_max": 55,
+    },
 ]
-
-
-
-def criar_tabela_maldicoes():
-    conn = sqlite3.connect(DB_MALDICOES)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS exorcistas (
-            user_id INTEGER PRIMARY KEY,
-            vitorias INTEGER DEFAULT 0,
-            vitorias_semana INTEGER DEFAULT 0,
-            vitorias_mes INTEGER DEFAULT 0
-        )
-    """)
-
-    for coluna in ["vitorias_semana", "vitorias_mes"]:
-        try:
-            cursor.execute(f"ALTER TABLE exorcistas ADD COLUMN {coluna} INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass
-
-    conn.commit()
-    conn.close()
-
-
-def adicionar_vitoria(user_id: int):
-    conn = sqlite3.connect(DB_MALDICOES)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO exorcistas (user_id, vitorias, vitorias_semana, vitorias_mes)
-        VALUES (?, 1, 1, 1)
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-            vitorias = vitorias + 1,
-            vitorias_semana = vitorias_semana + 1,
-            vitorias_mes = vitorias_mes + 1
-    """, (user_id,))
-
-    conn.commit()
-    conn.close()
-
-
-def pegar_vitorias(user_id: int):
-    conn = sqlite3.connect(DB_MALDICOES)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT vitorias FROM exorcistas WHERE user_id = ?",
-        (user_id,)
-    )
-
-    resultado = cursor.fetchone()
-    conn.close()
-
-    return resultado[0] if resultado else 0
-
-
-def pegar_ranking(limit: int = 10, periodo: str = "geral"):
-    conn = sqlite3.connect(DB_MALDICOES)
-    cursor = conn.cursor()
-
-    coluna = "vitorias"
-
-    if periodo == "semanal":
-        coluna = "vitorias_semana"
-    elif periodo == "mensal":
-        coluna = "vitorias_mes"
-
-    cursor.execute(f"""
-        SELECT user_id, {coluna}
-        FROM exorcistas
-        WHERE {coluna} > 0
-        ORDER BY {coluna} DESC
-        LIMIT ?
-    """, (limit,))
-
-    resultado = cursor.fetchall()
-    conn.close()
-    return resultado
-
-
-def resetar_ranking_periodo(periodo: str):
-    conn = sqlite3.connect(DB_MALDICOES)
-    cursor = conn.cursor()
-
-    if periodo == "semanal":
-        cursor.execute("UPDATE exorcistas SET vitorias_semana = 0")
-    elif periodo == "mensal":
-        cursor.execute("UPDATE exorcistas SET vitorias_mes = 0")
-
-    conn.commit()
-    conn.close()
 
 
 def pegar_proximo_rank(vitorias: int):
     ranks = sorted(CARGOS_PROGRESSAO, key=lambda x: x[0])
-
     for requisito, cargo_id in ranks:
         if vitorias < requisito:
             return requisito, cargo_id
-
     return None, None
 
 
@@ -282,17 +231,24 @@ def escolher_maldicao():
 
 def buscar_maldicao_por_nome(nome: str):
     nome = nome.lower().strip()
-
     for maldicao in MALDICOES:
         if maldicao["nome"].lower() == nome:
             return maldicao
-
     return None
+
+
+def status_corrupcao(corrupcao: int):
+    if corrupcao >= 20:
+        return "☠️ **Semi-Maldição**"
+    if corrupcao >= 10:
+        return "💀 **Marcado pela Maldição**"
+    if corrupcao >= 5:
+        return "🩸 **Instável**"
+    return "🧿 **Estável**"
 
 
 async def atualizar_cargo_progressao(member: discord.Member):
     vitorias = pegar_vitorias(member.id)
-
     cargo_novo = None
 
     for requisito, cargo_id in CARGOS_PROGRESSAO:
@@ -304,24 +260,16 @@ async def atualizar_cargo_progressao(member: discord.Member):
         return None
 
     cargos_remover = []
-
     for _, cargo_id in CARGOS_PROGRESSAO:
         cargo = member.guild.get_role(cargo_id)
-
         if cargo and cargo in member.roles and cargo != cargo_novo:
             cargos_remover.append(cargo)
 
     if cargos_remover:
-        await member.remove_roles(
-            *cargos_remover,
-            reason="Atualização de rank de exorcista"
-        )
+        await member.remove_roles(*cargos_remover, reason="Atualização de rank de exorcista")
 
     if cargo_novo not in member.roles:
-        await member.add_roles(
-            cargo_novo,
-            reason="Novo rank de exorcista desbloqueado"
-        )
+        await member.add_roles(cargo_novo, reason="Novo rank de exorcista desbloqueado")
         return cargo_novo
 
     return None
@@ -330,12 +278,9 @@ async def atualizar_cargo_progressao(member: discord.Member):
 def aplicar_bonus_abate(user_id: int, quantidade: int):
     if quantidade <= 0:
         return False
-
     jogador = buscar_jogador(user_id)
-
     if not jogador:
         return False
-
     adicionar_abate(user_id, quantidade=quantidade)
     return True
 
@@ -344,32 +289,34 @@ def aplicar_dano_abate(user_id: int, quantidade: int):
     if quantidade <= 0:
         return None
 
-    jogador = buscar_jogador(user_id)
+    if consumir_buff(user_id, "escudo", 1):
+        quantidade = max(0, quantidade - 5)
 
+    if quantidade <= 0:
+        jogador = buscar_jogador(user_id)
+        return jogador
+
+    jogador = buscar_jogador(user_id)
     if not jogador:
         return None
-
     return remover_vida(user_id, quantidade=quantidade)
 
 
 def restaurar_vida_total(user_id: int):
     jogador = buscar_jogador(user_id)
-
     if not jogador:
         return False
 
     conn = conectar()
     cursor = conn.cursor()
-
     cursor.execute(
         """
         UPDATE jogadores
-        SET vidas = ?, status = 'vivo'
-        WHERE user_id = ?
+        SET vidas = %s, status = 'vivo'
+        WHERE user_id = %s
         """,
         (VIDAS_MAXIMAS, user_id)
     )
-
     conn.commit()
     conn.close()
     return True
@@ -377,7 +324,6 @@ def restaurar_vida_total(user_id: int):
 
 def obter_familia_jogador(user_id: int):
     jogador = buscar_jogador(user_id)
-
     if not jogador:
         return "Livre"
 
@@ -394,10 +340,18 @@ def calcular_chance_final(user_id: int, chance_base: int):
     if "gojo" in familia.lower():
         bonus = 5
 
-    return min(95, chance_base + bonus), bonus, familia
+    corrupcao = pegar_corrupcao(user_id)
+    penalidade_corrupcao = min(20, corrupcao)
+
+    chance_final = chance_base + bonus - penalidade_corrupcao
+
+    if consumir_buff(user_id, "sorte", 1):
+        chance_final += 10
+
+    return max(1, min(95, chance_final)), bonus, familia, penalidade_corrupcao, corrupcao
 
 
-def sortear_drop_maldicao(nome_maldicao: str):
+def sortear_drop_maldicao(nome_maldicao: str, user_id: int):
     drops_lendarios = {
         "sukuna": "Dedo Amaldiçoado do Sukuna",
         "mahoraga": "Roda da Adaptação",
@@ -410,60 +364,36 @@ def sortear_drop_maldicao(nome_maldicao: str):
         "choso": "Sangue Condensado",
     }
 
+    sorte = random.randint(1, 100)
+
+    if quantidade_buff(user_id, "sorte") > 0:
+        consumir_buff(user_id, "sorte", 1)
+        sorte -= 10
+
     nome_lower = nome_maldicao.lower()
-    chance = random.randint(1, 100)
 
-    if chance <= 4:
-        return {
-            "raridade": "LENDÁRIO",
-            "emoji": "🌟",
-            "item": drops_lendarios.get(nome_lower, f"Relíquia de {nome_maldicao}"),
-            "bonus_abate": 5,
-        }
+    if sorte <= 4:
+        return {"raridade": "LENDÁRIO", "emoji": "🌟", "item": drops_lendarios.get(nome_lower, f"Relíquia de {nome_maldicao}"), "bonus_abate": 5}
+    if sorte <= 15:
+        return {"raridade": "ÉPICO", "emoji": "🟣", "item": f"Núcleo Especial de {nome_maldicao}", "bonus_abate": 3}
+    if sorte <= 40:
+        return {"raridade": "RARO", "emoji": "🔵", "item": f"Marca de {nome_maldicao}", "bonus_abate": 2}
 
-    if chance <= 15:
-        return {
-            "raridade": "ÉPICO",
-            "emoji": "🟣",
-            "item": f"Núcleo Especial de {nome_maldicao}",
-            "bonus_abate": 3,
-        }
-
-    if chance <= 40:
-        return {
-            "raridade": "RARO",
-            "emoji": "🔵",
-            "item": f"Marca de {nome_maldicao}",
-            "bonus_abate": 2,
-        }
-
-    return {
-        "raridade": "COMUM",
-        "emoji": "⚪",
-        "item": "Fragmento Amaldiçoado",
-        "bonus_abate": 1,
-    }
+    return {"raridade": "COMUM", "emoji": "⚪", "item": ITEM_FRAGMENTO, "bonus_abate": 1}
 
 
 def escolher_jogador_vivo_aleatorio():
     jogadores = listar_jogadores_vivos()
-
     if not jogadores:
         return None
-
     return random.choice(jogadores)
 
 
 async def deletar_depois(mensagem: discord.Message, segundos: int):
     await asyncio.sleep(segundos)
-
     try:
         await mensagem.delete()
-    except discord.NotFound:
-        pass
-    except discord.Forbidden:
-        pass
-    except discord.HTTPException:
+    except Exception:
         pass
 
 
@@ -478,7 +408,6 @@ class BotaoExorcizar(discord.ui.View):
 
     async def aviso_quase_expirando(self):
         await asyncio.sleep(max(1, TEMPO_EXPIRACAO - AVISO_EXPIRACAO))
-
         if self.derrotada or not self.mensagem:
             return
 
@@ -491,12 +420,8 @@ class BotaoExorcizar(discord.ui.View):
             print(f"[ERRO AVISO MALDIÇÃO] {e}")
 
     async def finalizar_visual_maldicao(self, exorcista: discord.Member | None = None):
-        """Remove o botão e transforma a mensagem original em maldição finalizada."""
         if not self.mensagem:
             return
-
-        if not exorcista and self.exorcista_id and self.mensagem.guild:
-            exorcista = self.mensagem.guild.get_member(self.exorcista_id)
 
         try:
             descricao = (
@@ -504,10 +429,7 @@ class BotaoExorcizar(discord.ui.View):
                 f"💀 Maldição: **{self.maldicao['nome']}**\n\n"
                 "O botão foi removido para evitar novas tentativas."
                 if exorcista
-                else (
-                    f"💀 Maldição: **{self.maldicao['nome']}**\n\n"
-                    "Essa maldição já foi finalizada e não pode mais ser exorcizada."
-                )
+                else f"💀 Maldição: **{self.maldicao['nome']}**\n\nEssa maldição já foi finalizada."
             )
 
             embed_derrotada = discord.Embed(
@@ -517,7 +439,6 @@ class BotaoExorcizar(discord.ui.View):
             )
             embed_derrotada.set_image(url=self.maldicao["imagem"])
             embed_derrotada.set_footer(text="Família Sant's • Maldição Finalizada")
-
             await self.mensagem.edit(embed=embed_derrotada, view=None)
         except Exception as e:
             print(f"[ERRO FINALIZAR VISUAL MALDIÇÃO] {e}")
@@ -541,105 +462,74 @@ class BotaoExorcizar(discord.ui.View):
         dano = self.maldicao.get("dano_expiracao", 1)
 
         if not alvo:
-            try:
-                await self.mensagem.channel.send(
-                    f"🌑 **{self.maldicao['nome']} desapareceu nas sombras...**\n"
-                    f"Nenhum jogador vivo foi encontrado para ser atacado.",
-                    delete_after=15
-                )
-            except Exception as e:
-                print(f"[ERRO AO EXPIRAR MALDIÇÃO] {e}")
+            await self.mensagem.channel.send(
+                f"🌑 **{self.maldicao['nome']} desapareceu nas sombras...**\nNenhum jogador vivo foi encontrado para ser atacado.",
+                delete_after=15
+            )
             return
 
         alvo_id = alvo[0]
         alvo_mencao = f"<@{alvo_id}>"
 
         jogador_atacado = aplicar_dano_abate(alvo_id, dano)
+        adicionar_corrupcao(alvo_id, max(1, dano // 2))
 
         if not jogador_atacado:
             return
 
         vidas = jogador_atacado[2]
         status = jogador_atacado[5]
+        corrupcao_atual = pegar_corrupcao(alvo_id)
 
         texto = (
             f"🌑 **{self.maldicao['nome']} não foi exorcizada a tempo.**\n\n"
             f"💀 A maldição atacou {alvo_mencao}.\n"
             f"🩸 Dano causado: **-{dano} vida(s)**\n"
+            f"🧫 Corrupção: **{corrupcao_atual}** — {status_corrupcao(corrupcao_atual)}\n"
             f"❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
         )
 
         if status == "eliminado":
             texto += f"\n\n☠️ {alvo_mencao} foi eliminado do **Jogo do Abate**."
 
-        try:
-            await self.mensagem.channel.send(texto)
-        except Exception as e:
-            print(f"[ERRO AO ANUNCIAR ATAQUE DA MALDIÇÃO] {e}")
+        await self.mensagem.channel.send(texto)
 
-        try:
-            canal_log = self.mensagem.guild.get_channel(CANAL_LOG_MALDICOES_ID)
-
-            if canal_log:
-                embed_log = discord.Embed(
-                    title="💀 Maldição Atacou",
-                    description=(
-                        f"💀 Maldição: **{self.maldicao['nome']}**\n"
-                        f"🎯 Alvo atingido: {alvo_mencao}\n"
-                        f"🩸 Dano: **-{dano} vida(s)**\n"
-                        f"❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
-                    ),
-                    color=COR_VERMELHA
-                )
-
-                if status == "eliminado":
-                    embed_log.add_field(
-                        name="☠️ Eliminação",
-                        value=f"{alvo_mencao} foi eliminado pelo ataque da maldição.",
-                        inline=False
-                    )
-
-                embed_log.set_footer(text="Família Sant's • Maldições Automáticas")
-                await canal_log.send(embed=embed_log)
-
-        except Exception as e:
-            print(f"[ERRO LOG ATAQUE MALDIÇÃO] {e}")
+        canal_log = self.mensagem.guild.get_channel(CANAL_LOG_MALDICOES_ID)
+        if canal_log:
+            embed_log = discord.Embed(
+                title="💀 Maldição Atacou",
+                description=(
+                    f"💀 Maldição: **{self.maldicao['nome']}**\n"
+                    f"🎯 Alvo atingido: {alvo_mencao}\n"
+                    f"🩸 Dano: **-{dano} vida(s)**\n"
+                    f"🧫 Corrupção atual: **{corrupcao_atual}**\n"
+                    f"❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
+                ),
+                color=COR_VERMELHA
+            )
+            embed_log.set_footer(text="Família Sant's • Maldições Automáticas")
+            await canal_log.send(embed=embed_log)
 
     async def remover_cooldown(self, user_id: int):
         await asyncio.sleep(COOLDOWN_EXORCIZAR)
         self.cooldown.discard(user_id)
 
-    @discord.ui.button(
-        label="Tentar Exorcizar",
-        emoji="🧿",
-        style=discord.ButtonStyle.danger
-    )
-    async def tentar_exorcizar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Tentar Exorcizar", emoji="🧿", style=discord.ButtonStyle.danger)
+    async def tentar_exorcizar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.derrotada:
             await self.finalizar_visual_maldicao()
-
-            await interaction.response.send_message(
-                "💀 Essa maldição já foi derrotada e não pode mais ser exorcizada.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("💀 Essa maldição já foi derrotada.", ephemeral=True)
             return
 
         if interaction.user.id in self.cooldown:
-            await interaction.response.send_message(
-                "⏳ Você acabou de tentar exorcizar. Espere 5 segundos.",
-                ephemeral=True
-            )
+            await interaction.response.send_message(f"⏳ Espere {COOLDOWN_EXORCIZAR} segundos.", ephemeral=True)
             return
 
         self.cooldown.add(interaction.user.id)
         asyncio.create_task(self.remover_cooldown(interaction.user.id))
 
         sorteio = random.randint(1, 100)
-        chance_final, bonus_familia_chance, familia_jogador = calcular_chance_final(
+        chance_final, bonus_familia_chance, familia_jogador, penalidade_corrupcao, corrupcao_antes = calcular_chance_final(
             interaction.user.id,
             self.maldicao["chance"]
         )
@@ -654,26 +544,24 @@ class BotaoExorcizar(discord.ui.View):
 
             try:
                 if cargo_maldicao:
-                    await interaction.user.add_roles(
-                        cargo_maldicao,
-                        reason=f"Derrotou a maldição {self.maldicao['nome']}"
-                    )
-
+                    await interaction.user.add_roles(cargo_maldicao, reason=f"Derrotou a maldição {self.maldicao['nome']}")
                 cargo_progressao = await atualizar_cargo_progressao(interaction.user)
-
             except discord.Forbidden:
-                await interaction.response.send_message(
-                    "⚠️ A maldição foi derrotada, mas eu não tenho permissão para entregar cargos.",
-                    ephemeral=True
-                )
+                await interaction.response.send_message("⚠️ Não tenho permissão para entregar cargos.", ephemeral=True)
                 return
 
             bonus = self.maldicao.get("bonus_abate", 0)
             bonus_aplicado = aplicar_bonus_abate(interaction.user.id, bonus)
             vida_restaurada = restaurar_vida_total(interaction.user.id)
 
-            drop = sortear_drop_maldicao(self.maldicao["nome"])
+            fragmentos = random.randint(self.maldicao.get("fragmentos_min", 5), self.maldicao.get("fragmentos_max", 15))
+            adicionar_item(interaction.user.id, ITEM_FRAGMENTO, fragmentos)
+
+            drop = sortear_drop_maldicao(self.maldicao["nome"], interaction.user.id)
+            adicionar_item(interaction.user.id, drop["item"], 1)
             drop_aplicado = aplicar_bonus_abate(interaction.user.id, drop["bonus_abate"])
+
+            nova_corrupcao = reduzir_corrupcao(interaction.user.id, 2)
 
             for item in self.children:
                 item.disabled = True
@@ -685,65 +573,45 @@ class BotaoExorcizar(discord.ui.View):
 
             mensagem = (
                 f"🧿 {interaction.user.mention} **derrotou a {self.maldicao['nome']}!**\n"
-                f"🏆 Vitória registrada: **{vitorias}** maldição(ões) derrotada(s)."
+                f"🏆 Vitórias: **{vitorias}**\n"
+                f"🧩 Fragmentos recebidos: **+{fragmentos}**\n"
+                f"🎁 Drop: {drop['emoji']} **{drop['raridade']}** — **{drop['item']}**\n"
+                f"🧫 Corrupção: **{corrupcao_antes} → {nova_corrupcao}** — {status_corrupcao(nova_corrupcao)}"
             )
 
             if cargo_maldicao:
                 mensagem += f"\n🎖️ Cargo recebido: {cargo_maldicao.mention}"
 
             if bonus > 0:
-                if bonus_aplicado:
-                    mensagem += f"\n🩸 **Jogo do Abate:** +{bonus} ponto(s) de abate."
-                else:
-                    mensagem += "\n🩸 **Jogo do Abate:** bônus não aplicado, pois você não está registrado no ritual."
+                mensagem += f"\n🩸 **Jogo do Abate:** {'+' + str(bonus) + ' abate(s)' if bonus_aplicado else 'bônus não aplicado; jogador não registrado.'}"
 
             if bonus_familia_chance > 0:
-                mensagem += f"\n🔵 **Bônus da Família Gojo:** +{bonus_familia_chance}% de chance aplicado."
+                mensagem += f"\n🔵 **Bônus Família Gojo:** +{bonus_familia_chance}%"
+
+            if penalidade_corrupcao > 0:
+                mensagem += f"\n🩸 **Penalidade de Corrupção:** -{penalidade_corrupcao}%"
 
             if vida_restaurada:
-                mensagem += f"\n❤️ **Vida restaurada:** {VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}"
+                mensagem += f"\n❤️ Vida restaurada: **{VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}**"
 
-            if drop:
-                mensagem += (
-                    f"\n\n🎁 **DROP:** {drop['emoji']} **{drop['raridade']}**"
-                    f"\n📦 Item: **{drop['item']}**"
-                    f"\n⚔️ Bônus: +{drop['bonus_abate']} abate(s)"
-                )
-
-                if not drop_aplicado:
-                    mensagem += "\n⚠️ Drop não aplicado no Abate, pois você não está registrado."
+            if not drop_aplicado:
+                mensagem += "\n⚠️ Bônus do drop no Abate não aplicado, pois você não está registrado."
 
             if cargo_progressao:
-                mensagem += (
-                    f"\n\n🔥 **SUBIU DE RANK!**"
-                    f"\n📈 Novo cargo desbloqueado: {cargo_progressao.mention}"
-                    f"\n👁️ Sua energia amaldiçoada evoluiu."
-                )
+                mensagem += f"\n\n🔥 **SUBIU DE RANK!**\n📈 Novo cargo: {cargo_progressao.mention}"
 
             proximo_requisito, proximo_cargo_id = pegar_proximo_rank(vitorias)
-
             if proximo_requisito:
                 faltam = proximo_requisito - vitorias
                 proximo_cargo = interaction.guild.get_role(proximo_cargo_id)
-
                 if proximo_cargo:
-                    mensagem += (
-                        f"\n\n📊 **Progresso:** `{vitorias}/{proximo_requisito}` vitórias"
-                        f"\n🎯 Faltam **{faltam}** para alcançar {proximo_cargo.mention}"
-                    )
+                    mensagem += f"\n\n📊 Progresso: `{vitorias}/{proximo_requisito}`\n🎯 Faltam **{faltam}** para {proximo_cargo.mention}"
             else:
-                mensagem += "\n\n👑 **Você já alcançou o rank máximo de exorcista.**"
+                mensagem += "\n\n👑 Você já alcançou o rank máximo."
 
-            msg_vitoria = await interaction.channel.send(mensagem)
+            await interaction.channel.send(mensagem)
 
             canal_log = interaction.guild.get_channel(CANAL_LOG_MALDICOES_ID)
-
-            if not canal_log:
-                try:
-                    canal_log = await interaction.guild.fetch_channel(CANAL_LOG_MALDICOES_ID)
-                except Exception as e:
-                    print(f"[LOG MALDIÇÕES] Canal de logs não encontrado ou sem acesso: {CANAL_LOG_MALDICOES_ID} | {e}")
-
             if canal_log:
                 embed_log = discord.Embed(
                     title="📜 Maldição Exorcizada",
@@ -753,86 +621,39 @@ class BotaoExorcizar(discord.ui.View):
                         f"🎲 Chance base: **{self.maldicao['chance']}%**\n"
                         f"🎲 Chance final: **{chance_final}%**\n"
                         f"🏯 Família: **{familia_jogador}**\n"
-                        f"🏆 Total de vitórias: **{vitorias}**"
+                        f"🧩 Fragmentos: **+{fragmentos}**\n"
+                        f"🎁 Drop: {drop['emoji']} **{drop['item']}**\n"
+                        f"🧫 Corrupção: **{nova_corrupcao}**"
                     ),
                     color=COR_VERDE
                 )
-
-                if cargo_maldicao:
-                    embed_log.add_field(
-                        name="🎖️ Cargo da Maldição",
-                        value=cargo_maldicao.mention,
-                        inline=False
-                    )
-
-                if bonus > 0:
-                    embed_log.add_field(
-                        name="🩸 Integração com Abate",
-                        value=(
-                            f"+{bonus} ponto(s) de abate aplicado(s)."
-                            if bonus_aplicado
-                            else "Jogador não registrado no Jogo do Abate."
-                        ),
-                        inline=False
-                    )
-
-                embed_log.add_field(
-                    name="❤️ Vida Restaurada",
-                    value=(
-                        f"{VIDAS_MAXIMAS}/{VIDAS_MAXIMAS}"
-                        if vida_restaurada
-                        else "Não restaurada; jogador não registrado no Jogo do Abate."
-                    ),
-                    inline=False
-                )
-
-                embed_log.add_field(
-                    name="🎁 Drop",
-                    value=(
-                        f"{drop['emoji']} **{drop['raridade']}**\n"
-                        f"Item: **{drop['item']}**\n"
-                        f"Bônus: +{drop['bonus_abate']} abate(s)"
-                    ),
-                    inline=False
-                )
-
-                if cargo_progressao:
-                    embed_log.add_field(
-                        name="📈 Progressão",
-                        value=f"Novo cargo: {cargo_progressao.mention}",
-                        inline=False
-                    )
-
                 embed_log.set_footer(text="Família Sant's • Logs de Maldições")
                 await canal_log.send(embed=embed_log)
 
         else:
             dano = self.maldicao.get("dano_falha", 0)
+            corrupcao_ganha = self.maldicao.get("corrupcao_falha", 1)
+
             jogador_afetado = aplicar_dano_abate(interaction.user.id, dano)
+            corrupcao_atual = adicionar_corrupcao(interaction.user.id, corrupcao_ganha)
 
             texto_falha = (
-                f"❌ {interaction.user.mention} tentou exorcizar **{self.maldicao['nome']}**, mas falhou..."
+                f"❌ {interaction.user.mention} tentou exorcizar **{self.maldicao['nome']}**, mas falhou...\n"
+                f"🧫 Corrupção recebida: **+{corrupcao_ganha}**\n"
+                f"🩸 Corrupção atual: **{corrupcao_atual}** — {status_corrupcao(corrupcao_atual)}"
             )
 
             if dano > 0:
                 if jogador_afetado:
                     vidas = jogador_afetado[2]
                     status = jogador_afetado[5]
-
-                    texto_falha += (
-                        f"\n🩸 **Jogo do Abate:** você perdeu **{dano} vida(s)**."
-                        f"\n❤️ Vidas restantes: **{vidas}/{VIDAS_MAXIMAS}**"
-                    )
-
+                    texto_falha += f"\n🩸 Jogo do Abate: perdeu **{dano} vida(s)**.\n❤️ Vidas: **{vidas}/{VIDAS_MAXIMAS}**"
                     if status == "eliminado":
                         texto_falha += "\n💀 Você foi eliminado do ritual."
                 else:
                     texto_falha += "\n🩸 Você não está registrado no Jogo do Abate, então não perdeu vida."
 
-            await interaction.response.send_message(
-                texto_falha,
-                ephemeral=False
-            )
+            await interaction.response.send_message(texto_falha, ephemeral=False)
 
             try:
                 msg = await interaction.original_response()
@@ -845,7 +666,7 @@ class Maldicoes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.tarefa_maldicoes = None
-        criar_tabela_maldicoes()
+        criar_tabelas_economia()
 
     async def cog_load(self):
         self.tarefa_maldicoes = asyncio.create_task(self.sistema_maldicoes())
@@ -857,54 +678,37 @@ class Maldicoes(commands.Cog):
     async def enviar_maldicao(self, canal, manual=False, maldicao_especifica=None):
         maldicao = maldicao_especifica or escolher_maldicao()
 
-        extra = (
-            "⚠️ Invocada manualmente."
-            if manual
-            else f"⏳ Essa maldição ficará ativa por **{TEMPO_EXPIRACAO // 60} minutos**."
-        )
+        extra = "⚠️ Invocada manualmente." if manual else f"⏳ Ativa por **{TEMPO_EXPIRACAO // 60} minutos**."
 
         embed = discord.Embed(
             title=f"💀 {maldicao['nome']} apareceu!",
             description=(
                 f"{maldicao['descricao']}\n\n"
                 f"🧿 Clique no botão abaixo para tentar exorcizar.\n"
-                f"🎲 Chance de vitória: **{maldicao['chance']}%**\n"
+                f"🎲 Chance base: **{maldicao['chance']}%**\n"
                 f"🩸 Dano ao falhar: **-{maldicao.get('dano_falha', 0)} vida(s)**\n"
-                f"🌑 Dano se ninguém derrotar: **-{maldicao.get('dano_expiracao', 0)} vida(s)**\n"
-                f"⏳ Cooldown por jogador: **{COOLDOWN_EXORCIZAR}s**\n\n"
+                f"🧫 Corrupção ao falhar: **+{maldicao.get('corrupcao_falha', 1)}**\n"
+                f"🌑 Dano se ninguém derrotar: **-{maldicao.get('dano_expiracao', 0)} vida(s)**\n\n"
                 f"{extra}"
             ),
             color=COR_ROXA_JUJUTSU
         )
-
         embed.set_image(url=maldicao["imagem"])
         embed.set_footer(text="Família Sant's • Maldições Aleatórias")
 
         view = BotaoExorcizar(maldicao)
-
-        mensagem = await canal.send(
-            embed=embed,
-            view=view
-        )
-
+        mensagem = await canal.send(embed=embed, view=view)
         view.mensagem = mensagem
         asyncio.create_task(view.aviso_quase_expirando())
 
     async def sistema_maldicoes(self):
         await self.bot.wait_until_ready()
-
         while not self.bot.is_closed():
             hora = datetime.datetime.now().hour
-
-            if 0 <= hora <= 5:
-                tempo = random.randint(TEMPO_MADRUGADA_MIN, TEMPO_MADRUGADA_MAX)
-            else:
-                tempo = random.randint(TEMPO_MINIMO, TEMPO_MAXIMO)
-
+            tempo = random.randint(TEMPO_MADRUGADA_MIN, TEMPO_MADRUGADA_MAX) if 0 <= hora <= 5 else random.randint(TEMPO_MINIMO, TEMPO_MAXIMO)
             await asyncio.sleep(tempo)
 
             canal = self.bot.get_channel(CANAL_MALDICOES_ID)
-
             if not canal:
                 print("[MALDIÇÕES] Canal não encontrado.")
                 continue
@@ -924,15 +728,10 @@ class Maldicoes(commands.Cog):
 
         if nome:
             maldicao = buscar_maldicao_por_nome(nome)
-
             if not maldicao:
                 nomes = ", ".join([m["nome"] for m in MALDICOES])
-                await ctx.send(
-                    f"❌ Maldição não encontrada.\nUse uma dessas: `{nomes}`",
-                    delete_after=10
-                )
+                await ctx.send(f"❌ Maldição não encontrada.\nUse: `{nomes}`", delete_after=10)
                 return
-
             await self.enviar_maldicao(ctx.channel, manual=True, maldicao_especifica=maldicao)
             return
 
@@ -946,32 +745,23 @@ class Maldicoes(commands.Cog):
             await ctx.reply("⚠️ Ocorreu um erro ao invocar a maldição.", delete_after=8)
             print(f"[ERRO COMANDO MALDIÇÃO] {error}")
 
-    @app_commands.command(
-        name="ranking_exorcistas",
-        description="Mostra o ranking dos maiores exorcistas do servidor."
-    )
+    @app_commands.command(name="ranking_exorcistas", description="Mostra o ranking dos maiores exorcistas.")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def ranking_exorcistas(self, interaction: discord.Interaction, periodo: str = "geral"):
         periodo = periodo.lower().strip()
-
         if periodo not in ["geral", "semanal", "mensal"]:
             periodo = "geral"
 
         ranking = pegar_ranking(10, periodo=periodo)
 
         if not ranking:
-            await interaction.response.send_message(
-                "💀 Nenhuma maldição foi derrotada ainda.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("💀 Nenhuma maldição foi derrotada ainda.", ephemeral=True)
             return
 
         texto = ""
-
         for posicao, (user_id, vitorias) in enumerate(ranking, start=1):
             membro = interaction.guild.get_member(user_id)
             nome = membro.mention if membro else f"`{user_id}`"
-
             medalha = ["🥇", "🥈", "🥉"][posicao - 1] if posicao <= 3 else f"**{posicao}º**"
             texto += f"{medalha} {nome} — 🧿 **{vitorias}** vitória(s)\n"
 
@@ -980,7 +770,6 @@ class Maldicoes(commands.Cog):
             description=texto,
             color=COR_ROXA_JUJUTSU
         )
-
         embed.set_footer(text="Família Sant's • Sistema de Maldições")
         await interaction.response.send_message(embed=embed)
 
@@ -988,26 +777,11 @@ class Maldicoes(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def resetar_ranking_exorcistas(self, ctx, periodo: str = "semanal"):
         periodo = periodo.lower().strip()
-
         if periodo not in ["semanal", "mensal"]:
-            await ctx.reply("❌ Use `!resetar_ranking_exorcistas semanal` ou `!resetar_ranking_exorcistas mensal`.", delete_after=10)
+            await ctx.reply("❌ Use `!resetar_ranking_exorcistas semanal` ou `mensal`.", delete_after=10)
             return
-
         resetar_ranking_periodo(periodo)
-
-        await ctx.reply(
-            f"🔄 Ranking de exorcistas **{periodo}** resetado com sucesso.",
-            delete_after=10
-        )
-
-    @resetar_ranking_exorcistas.error
-    async def resetar_ranking_exorcistas_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.reply("❌ Apenas administradores podem resetar ranking.", delete_after=8)
-        else:
-            await ctx.reply("⚠️ Ocorreu um erro ao resetar o ranking.", delete_after=8)
-            print(f"[ERRO RESET RANKING EXORCISTAS] {error}")
-
+        await ctx.reply(f"🔄 Ranking **{periodo}** resetado.", delete_after=10)
 
 
 async def setup(bot):
