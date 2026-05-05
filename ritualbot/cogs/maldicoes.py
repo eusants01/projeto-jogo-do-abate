@@ -45,8 +45,9 @@ TEMPO_MADRUGADA_MIN = 300
 TEMPO_MADRUGADA_MAX = 1200
 
 TEMPO_EXPIRACAO = 300
-TEMPO_DELETAR_FALHA = 8
-COOLDOWN_EXORCIZAR = 5
+TEMPO_DELETAR_FALHA = 7
+TEMPO_DELETAR_VITORIA = 7
+COOLDOWN_EXORCIZAR = 3
 AVISO_EXPIRACAO = 60
 
 ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
@@ -605,11 +606,12 @@ class BotaoExorcizar(discord.ui.View):
                 faltam = proximo_requisito - vitorias
                 proximo_cargo = interaction.guild.get_role(proximo_cargo_id)
                 if proximo_cargo:
-                    mensagem += f"\n\n📊 Progresso: `{vitorias}/{proximo_requisito}`\n🎯 Faltam **{faltam}** para {proximo_cargo.mention}"
+                    mensagem += f"\n\n📊 Progresso: `{vitorias}/{proximo_requisito}`\n🎯 Faltam **{faltam} vitórias** para o seu próximo grau"
             else:
                 mensagem += "\n\n👑 Você já alcançou o rank máximo."
 
-            await interaction.channel.send(mensagem)
+            msg_vitoria = await interaction.channel.send(mensagem)
+            asyncio.create_task(deletar_depois(msg_vitoria, TEMPO_DELETAR_VITORIA))
 
             canal_log = interaction.guild.get_channel(CANAL_LOG_MALDICOES_ID)
             if canal_log:
