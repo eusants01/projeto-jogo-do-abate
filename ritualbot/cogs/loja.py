@@ -455,3 +455,4 @@ class Loja(commands.Cog):
 async def setup(bot):
     bot.add_view(LojaView())
     await bot.add_cog(Loja(bot))
+    
