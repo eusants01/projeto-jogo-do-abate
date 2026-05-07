@@ -320,22 +320,6 @@ class LojaView(discord.ui.View):
     async def inventario_botao(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.mostrar_inventario(interaction)
 
-    @discord.ui.button(label="Defesa", emoji="🛡️", style=discord.ButtonStyle.success, custom_id="loja_defesa_v2", row=2)
-    async def defesa(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await enviar_categoria(interaction, "defesa")
-
-    @discord.ui.button(label="Ataque", emoji="🔥", style=discord.ButtonStyle.danger, custom_id="loja_ataque_v2", row=2)
-    async def ataque(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await enviar_categoria(interaction, "ataque")
-
-    @discord.ui.button(label="Sorte", emoji="🍀", style=discord.ButtonStyle.primary, custom_id="loja_sorte_v2", row=2)
-    async def sorte(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await enviar_categoria(interaction, "sorte")
-
-    @discord.ui.button(label="Corrupção", emoji="🧿", style=discord.ButtonStyle.primary, custom_id="loja_corrupcao_v2", row=2)
-    async def corrupcao(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await enviar_categoria(interaction, "corrupcao")
-
 
 def criar_embed_loja():
     embed = discord.Embed(
