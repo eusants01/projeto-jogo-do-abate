@@ -41,13 +41,13 @@ VIDAS_MAXIMAS = 750
 
 TEMPO_MINIMO = 600
 TEMPO_MAXIMO = 2700
-TEMPO_MADRUGADA_MIN = 300
-TEMPO_MADRUGADA_MAX = 1200
+TEMPO_MADRUGADA_MIN = 120
+TEMPO_MADRUGADA_MAX = 800
 
 TEMPO_EXPIRACAO = 300
-TEMPO_DELETAR_FALHA = 7
-TEMPO_DELETAR_VITORIA = 7
-COOLDOWN_EXORCIZAR = 3
+TEMPO_DELETAR_FALHA = 4
+TEMPO_DELETAR_VITORIA = 15
+COOLDOWN_EXORCIZAR = 2
 AVISO_EXPIRACAO = 60
 
 ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
@@ -124,7 +124,7 @@ MALDICOES = [
         "peso_spawn": 3,
         "cargo_id": 123456789012345678,
         "bonus_abate": 5,
-        "dano_falha": 7,
+        "dano_falha": 10,
         "dano_expiracao": 8,
         "corrupcao_falha": 7,
         "fragmentos_min": 35,
