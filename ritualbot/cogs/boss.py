@@ -949,7 +949,7 @@ class BossView(discord.ui.View):
 # =========================
 # COG
 # =========================
-class Boss(commands.Cog):
+class BossRaid(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
@@ -1105,7 +1105,11 @@ class Boss(commands.Cog):
 
 
 async def setup(bot):
+    # Evita conflito caso alguma versão antiga da cog ainda esteja carregada.
     if bot.get_cog("Boss"):
-        bot.remove_cog("Boss")
+        await bot.remove_cog("Boss")
 
-    await bot.add_cog(Boss(bot))
+    if bot.get_cog("BossRaid"):
+        await bot.remove_cog("BossRaid")
+
+    await bot.add_cog(BossRaid(bot))
