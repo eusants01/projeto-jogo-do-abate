@@ -1,6 +1,6 @@
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord.ext import commands
@@ -104,17 +104,22 @@ class Roleta(commands.Cog):
         pesos = [resultado["peso"] for resultado in RESULTADOS_ROLETA]
         return random.choices(RESULTADOS_ROLETA, weights=pesos, k=1)[0]
 
-    @app_commands.command(name="roleta", description="Gire a Roleta Amaldiçoada do Cassino do Diabo.")
+    @app_commands.command(
+        name="roleta",
+        description="Gire a Roleta Amaldiçoada do Cassino do Diabo."
+    )
     @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def roleta(self, interaction: discord.Interaction):
         dados = obter_usuario(interaction.user.id)
         ultima_roleta = dados[5]
 
-        agora = datetime.utcnow()
+        agora = datetime.now(timezone.utc)
 
         if ultima_roleta:
-            ultima = datetime.fromisoformat(ultima_roleta)
-            proximo = ultima + timedelta(minutes=COOLDOWN_ROLETA_MINUTOS)
+            if ultima_roleta.tzinfo is None:
+                ultima_roleta = ultima_roleta.replace(tzinfo=timezone.utc)
+
+            proximo = ultima_roleta + timedelta(minutes=COOLDOWN_ROLETA_MINUTOS)
 
             if agora < proximo:
                 restante = proximo - agora
@@ -123,8 +128,10 @@ class Roleta(commands.Cog):
 
                 embed = discord.Embed(
                     title="⏳ Roleta em Recarga",
-                    description=f"> “A roleta ainda não aceita uma nova aposta.”\n\n"
-                                f"Volte em **{minutos}min {segundos}s**.",
+                    description=(
+                        "> “A roleta ainda não aceita uma nova aposta.”\n\n"
+                        f"Volte em **{minutos}min {segundos}s**."
+                    ),
                     color=COR_CASSINO
                 )
 
@@ -146,14 +153,19 @@ class Roleta(commands.Cog):
 
         embed = discord.Embed(
             title="🎰 Roleta Amaldiçoada",
-            description=f"> “A roleta gira lentamente... O Dealer observa.”\n\n"
-                        f"🎲 **Resultado:** {resultado['raridade']} **{resultado['nome']}**\n\n"
-                        f"🪙 **{sinal}{resultado['valor']:,} Moedas do Diabo**\n\n"
-                        f"*{resultado['frase']}*",
+            description=(
+                "> “A roleta gira lentamente... O Dealer observa.”\n\n"
+                f"🎲 **Resultado:** {resultado['raridade']} **{resultado['nome']}**\n\n"
+                f"🪙 **{sinal}{resultado['valor']:,} Moedas do Diabo**\n\n"
+                f"*{resultado['frase']}*"
+            ),
             color=cor
         )
 
-        embed.set_footer(text=f"👁️ Cassino do Diabo • Retorne em {COOLDOWN_ROLETA_MINUTOS} minutos")
+        embed.set_footer(
+            text=f"👁️ Cassino do Diabo • Retorne em {COOLDOWN_ROLETA_MINUTOS} minutos"
+        )
+
         await interaction.response.send_message(embed=embed)
 
 

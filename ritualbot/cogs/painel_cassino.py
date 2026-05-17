@@ -108,7 +108,7 @@ class PainelCassino(commands.Cog):
                 "participar de pactos, enfrentar eventos especiais e disputar rankings dentro da Família Sant’s.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 "🎲 **Roleta Amaldiçoada**\n"
-                "Teste sua sorte a cada 30 minutos.\n\n"
+                "Teste sua sorte a cada 2 minutos.\n\n"
                 "🪙 **Economia Permanente**\n"
                 "Acumule moedas, transfira para outros membros e suba no ranking.\n\n"
                 "✍️ **Pactos**\n"
