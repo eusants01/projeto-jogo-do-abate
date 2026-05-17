@@ -6,6 +6,8 @@ from discord import app_commands
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
 COR_CASSINO = 0x8B0000
+COR_DOURADO = 0xD4AF37
+
 BANNER_CASSINO = "https://i.imgur.com/udSDcgc.png"
 
 CANAL_CASSINO_ID = 1502025561445240982
@@ -80,7 +82,7 @@ class PainelCassinoView(discord.ui.View):
                 "🎁 Comprar recompensas futuras\n\n"
                 "> Toda fortuna possui um preço."
             ),
-            color=0xD4AF37
+            color=COR_DOURADO
         )
         embed.set_footer(text="👁️ Cassino do Diabo • Riqueza, risco e consequência")
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -123,7 +125,9 @@ class PainelCassino(commands.Cog):
         embed.set_image(url=BANNER_CASSINO)
         embed.set_footer(text="👁️ Cassino do Diabo • A casa sempre observa")
 
-        await interaction.response.send_message(
+        await interaction.response.defer(ephemeral=True)
+
+        await interaction.channel.send(
             embed=embed,
             view=PainelCassinoView()
         )
