@@ -65,11 +65,11 @@ async def on_ready():
 async def carregar_cogs():
     await bot.load_extension("cogs.abate")
     await bot.load_extension("cogs.maldicoes")
-    await bot.load_extension("cogs.boss")
     await bot.load_extension("cogs.familias")
-    await bot.load_extension("cogs.painel_cassino")
+    await bot.load_extension("cogs.loja")
 
     # 🎰 Cassino do Diabo
+    await bot.load_extension("cogs.painel_cassino")
     await bot.load_extension("cogs.economia")
     await bot.load_extension("cogs.roleta")
 

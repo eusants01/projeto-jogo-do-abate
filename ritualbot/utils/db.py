@@ -16,27 +16,27 @@ def criar_tabelas():
     cursor = conn.cursor()
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS jogadores (
-        user_id BIGINT PRIMARY KEY,
-        username TEXT NOT NULL,
-        vidas INTEGER DEFAULT 300,
-        abates INTEGER DEFAULT 0,
-        contratos INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'vivo',
-        alvo_id BIGINT DEFAULT NULL,
-        familia TEXT DEFAULT 'Livre'
-    )
+        CREATE TABLE IF NOT EXISTS jogadores (
+            user_id BIGINT PRIMARY KEY,
+            username TEXT NOT NULL,
+            vidas INTEGER DEFAULT 750,
+            abates INTEGER DEFAULT 0,
+            contratos INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'vivo',
+            alvo_id BIGINT DEFAULT NULL,
+            familia TEXT DEFAULT 'Livre'
+        )
     """)
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS eventos (
-        id SERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        descricao TEXT NOT NULL,
-        multiplicador_abate INTEGER DEFAULT 1,
-        dano_extra INTEGER DEFAULT 0,
-        ativo BOOLEAN DEFAULT FALSE
-    )
+        CREATE TABLE IF NOT EXISTS eventos (
+            id SERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            multiplicador_abate INTEGER DEFAULT 1,
+            dano_extra INTEGER DEFAULT 0,
+            ativo BOOLEAN DEFAULT FALSE
+        )
     """)
 
     conn.commit()
@@ -47,14 +47,11 @@ def registrar_jogador(user_id: int, username: str):
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         INSERT INTO jogadores (user_id, username, vidas)
         VALUES (%s, %s, %s)
         ON CONFLICT (user_id) DO NOTHING
-        """,
-        (user_id, username, VIDAS_MAXIMAS)
-    )
+    """, (user_id, username, VIDAS_MAXIMAS))
 
     conn.commit()
     conn.close()
@@ -64,14 +61,11 @@ def buscar_jogador(user_id: int):
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT user_id, username, vidas, abates, contratos, status, alvo_id, familia
         FROM jogadores
         WHERE user_id = %s
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
     jogador = cursor.fetchone()
     conn.close()
@@ -83,10 +77,10 @@ def listar_jogadores_vivos():
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT user_id, username, vidas, abates, contratos, status, alvo_id, familia
-    FROM jogadores
-    WHERE status = 'vivo'
-    ORDER BY username ASC
+        SELECT user_id, username, vidas, abates, contratos, status, alvo_id, familia
+        FROM jogadores
+        WHERE status = 'vivo'
+        ORDER BY username ASC
     """)
 
     jogadores = cursor.fetchall()
@@ -99,10 +93,10 @@ def listar_ranking():
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT user_id, username, vidas, abates, contratos, status, familia
-    FROM jogadores
-    ORDER BY abates DESC, contratos DESC, vidas DESC
-    LIMIT 10
+        SELECT user_id, username, vidas, abates, contratos, status, familia
+        FROM jogadores
+        ORDER BY abates DESC, contratos DESC, vidas DESC
+        LIMIT 10
     """)
 
     jogadores = cursor.fetchall()
@@ -150,14 +144,11 @@ def remover_vida(user_id: int, quantidade: int = 1):
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         UPDATE jogadores
         SET vidas = GREATEST(vidas - %s, 0)
         WHERE user_id = %s AND status = 'vivo'
-        """,
-        (quantidade, user_id)
-    )
+    """, (quantidade, user_id))
 
     cursor.execute(
         "SELECT vidas FROM jogadores WHERE user_id = %s",
@@ -167,14 +158,11 @@ def remover_vida(user_id: int, quantidade: int = 1):
     resultado = cursor.fetchone()
 
     if resultado and resultado[0] <= 0:
-        cursor.execute(
-            """
+        cursor.execute("""
             UPDATE jogadores
             SET vidas = 0, status = 'eliminado', alvo_id = NULL
             WHERE user_id = %s
-            """,
-            (user_id,)
-        )
+        """, (user_id,))
 
     conn.commit()
     conn.close()
@@ -186,13 +174,10 @@ def criar_evento(nome: str, descricao: str, multiplicador_abate: int = 1, dano_e
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         INSERT INTO eventos (nome, descricao, multiplicador_abate, dano_extra, ativo)
         VALUES (%s, %s, %s, %s, FALSE)
-        """,
-        (nome, descricao, multiplicador_abate, dano_extra)
-    )
+    """, (nome, descricao, multiplicador_abate, dano_extra))
 
     conn.commit()
     conn.close()
@@ -203,9 +188,9 @@ def listar_eventos():
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT id, nome, descricao, multiplicador_abate, dano_extra, ativo
-    FROM eventos
-    ORDER BY id DESC
+        SELECT id, nome, descricao, multiplicador_abate, dano_extra, ativo
+        FROM eventos
+        ORDER BY id DESC
     """)
 
     eventos = cursor.fetchall()
@@ -218,11 +203,11 @@ def buscar_evento_ativo():
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT id, nome, descricao, multiplicador_abate, dano_extra, ativo
-    FROM eventos
-    WHERE ativo = TRUE
-    ORDER BY id DESC
-    LIMIT 1
+        SELECT id, nome, descricao, multiplicador_abate, dano_extra, ativo
+        FROM eventos
+        WHERE ativo = TRUE
+        ORDER BY id DESC
+        LIMIT 1
     """)
 
     evento = cursor.fetchone()
@@ -266,13 +251,10 @@ def restaurar_vidas():
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         UPDATE jogadores
         SET vidas = %s, status = 'vivo', alvo_id = NULL
-        """,
-        (VIDAS_MAXIMAS,)
-    )
+    """, (VIDAS_MAXIMAS,))
 
     conn.commit()
     conn.close()
