@@ -4,31 +4,26 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from utils.db import criar_tabelas
+from utils.cassino_db import criar_tabelas_cassino
 
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
-# =========================
-# INTENTS (CORRIGIDO)
-# =========================
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
-intents.message_content = True  # 🔥 NECESSÁRIO PRO !comando
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# =========================
-# STATUS ROTATIVO
-# =========================
 status_list = [
-    "🎯 Alvos sendo marcados...",
-    "🩸 O ritual já começou.",
-    "💀 Sobreviva ao Jogo do Abate.",
-    "⚔️ Contratos em andamento.",
-    "👁️ Tudo segue o plano.",
+    "🎰 O Cassino do Diabo abriu...",
+    "🪙 Moedas do Diabo circulando...",
+    "🎲 A roleta está girando...",
+    "✍️ Pactos sendo assinados...",
+    "👁️ A casa sempre observa.",
 ]
 
 
@@ -41,9 +36,6 @@ async def trocar_status():
     )
 
 
-# =========================
-# PERMITE COMANDOS COM !
-# =========================
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -52,12 +44,10 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-# =========================
-# BOT ONLINE
-# =========================
 @bot.event
 async def on_ready():
     criar_tabelas()
+    criar_tabelas_cassino()
 
     if not trocar_status.is_running():
         trocar_status.start()
@@ -72,19 +62,18 @@ async def on_ready():
         print(f"❌ Erro ao sincronizar comandos: {e}")
 
 
-# =========================
-# CARREGAR COGS
-# =========================
 async def carregar_cogs():
     await bot.load_extension("cogs.abate")
     await bot.load_extension("cogs.maldicoes")
     await bot.load_extension("cogs.boss")
     await bot.load_extension("cogs.familias")
+    await bot.load_extension("cogs.painel_cassino")
+
+    # 🎰 Cassino do Diabo
+    await bot.load_extension("cogs.economia")
+    await bot.load_extension("cogs.roleta")
 
 
-# =========================
-# MAIN
-# =========================
 async def main():
     if not TOKEN:
         raise RuntimeError("Token não encontrado. Configure o arquivo .env")
