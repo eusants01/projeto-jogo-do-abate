@@ -1105,4 +1105,7 @@ class Boss(commands.Cog):
 
 
 async def setup(bot):
+    if bot.get_cog("Boss"):
+        bot.remove_cog("Boss")
+
     await bot.add_cog(Boss(bot))
