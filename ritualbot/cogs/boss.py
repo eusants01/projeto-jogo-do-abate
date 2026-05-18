@@ -269,10 +269,14 @@ def buscar_boss(nome: str):
     nome = nome.lower().strip()
 
     for boss in BOSSES:
+        if not boss.get("nome"):
+            continue
         if boss["nome"].lower() == nome:
             return boss
 
     for boss in BOSSES:
+        if not boss.get("nome"):
+            continue
         if nome in boss["nome"].lower():
             return boss
 
@@ -963,25 +967,37 @@ class BossRaid(commands.Cog):
         except Exception:
             pass
 
-        if BOSS_ATIVO is not None:
+        try:
+            if BOSS_ATIVO is not None:
+                await ctx.send(
+                    "⚠️ Já existe um **boss ativo** no servidor.\n"
+                    "Use `!limpar_boss` se precisar limpar manualmente.",
+                    delete_after=12
+                )
+                return
+
+            bosses_validos = [b for b in BOSSES if b.get("nome")]
+            boss = buscar_boss(nome) if nome else random.choice(bosses_validos)
+
+            if not boss:
+                nomes = ", ".join([b["nome"] for b in bosses_validos])
+                await ctx.send(
+                    f"❌ Boss não encontrado.\nUse um destes:\n`{nomes}`",
+                    delete_after=15
+                )
+                return
+
+            view = BossView(boss)
+            msg = await ctx.send(embed=view.embed(), view=view)
+            view.mensagem = msg
+            BOSS_ATIVO = view
+
+        except Exception as e:
+            print(f"[ERRO AO INVOCAR BOSS] {repr(e)}")
             await ctx.send(
-                "⚠️ Já existe um **boss ativo** no servidor.\n"
-                "Derrote ou aguarde ele acabar antes de invocar outro.",
-                delete_after=12
+                f"⚠️ Erro ao invocar boss.\n```{repr(e)}```",
+                delete_after=20
             )
-            return
-
-        boss = buscar_boss(nome) if nome else random.choice(BOSSES)
-
-        if not boss:
-            nomes = ", ".join([b["nome"] for b in BOSSES])
-            await ctx.send(f"❌ Boss não encontrado.\nUse: `{nomes}`", delete_after=12)
-            return
-
-        view = BossView(boss)
-        msg = await ctx.send(embed=view.embed(), view=view)
-        view.mensagem = msg
-        BOSS_ATIVO = view
 
     @commands.command(name="bosses")
     @commands.has_permissions(administrator=True)
@@ -994,6 +1010,8 @@ class BossRaid(commands.Cog):
         texto = ""
 
         for boss in BOSSES:
+            if not boss.get("nome"):
+                continue
             texto += f"• **{boss['nome']}** — `{boss.get('categoria', 'Especial')}`\n"
 
         embed = discord.Embed(
@@ -1107,9 +1125,9 @@ class BossRaid(commands.Cog):
 async def setup(bot):
     # Evita conflito caso alguma versão antiga da cog ainda esteja carregada.
     if bot.get_cog("Boss"):
-        await bot.remove_cog("Boss")
+        bot.remove_cog("Boss")
 
     if bot.get_cog("BossRaid"):
-        await bot.remove_cog("BossRaid")
+        bot.remove_cog("BossRaid")
 
     await bot.add_cog(BossRaid(bot))
