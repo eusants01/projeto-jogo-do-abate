@@ -1910,13 +1910,20 @@ class BossRaid(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(Maldicoes(bot))
+    # Remove comandos antigos para evitar conflito
+    for comando in ["boss", "bosses", "limpar_boss", "resetar_vida", "vidas", "resetar_tudo", "reset_tudo"]:
+        if bot.get_command(comando):
+            bot.remove_command(comando)
 
-    # Evita conflito caso alguma cog antiga de boss ainda esteja carregada.
+    # Remove cogs antigas se existirem
     if bot.get_cog("Boss"):
         bot.remove_cog("Boss")
 
     if bot.get_cog("BossRaid"):
         bot.remove_cog("BossRaid")
 
+    if bot.get_cog("Maldicoes"):
+        bot.remove_cog("Maldicoes")
+
+    await bot.add_cog(Maldicoes(bot))
     await bot.add_cog(BossRaid(bot))
