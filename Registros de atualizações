@@ -1,0 +1,32 @@
+name: Discord Updates
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Discord update
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d '{
+            "embeds": [{
+              "title": "🚀 Nova atualização enviada",
+              "description": "**RitualBot recebeu uma nova atualização.**\n\n📌 Commit: `${{ github.event.head_commit.message }}`\n👤 Autor: `${{ github.actor }}`\n🔗 Repositório atualizado.",
+              "color": 9109504,
+              "image": {
+                "url": "https://cdn.discordapp.com/attachments/1502524697907302562/1505780976150642708/content.png?ex=6a0bdf50&is=6a0a8dd0&hm=7d3e83e3d37a2588f7ce6315b13f7d4abebf818b07bdbe2999b5b3192be4113e&"
+              },
+              "footer": {
+                "text": "Família Sant’s • Updates Logs"
+              }
+            }]
+          }' \
+          "$DISCORD_WEBHOOK_URL"
