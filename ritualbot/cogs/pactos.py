@@ -4,17 +4,11 @@ from discord.ext import commands
 
 from utils.cassino_db import adicionar_moedas
 
-# =========================
-# CONFIG
-# =========================
-
-CHANCE_PACTO_PROIBIDO = 1  # 1 em 10.000
+CHANCE_PACTO_PROIBIDO = 1
 RECOMPENSA_PACTO = 50000
 
-# 🎭 Imagem/GIF do pacto
 IMAGEM_PACTO_PROIBIDO = "https://i.imgur.com/MX7rQpp.png"
 
-# 🚫 Cargos protegidos
 CARGOS_PROTEGIDOS = [
     1483191687927828766,
     1480349452744265759,
@@ -32,52 +26,28 @@ CARGOS_PROTEGIDOS = [
     1494114100907741214,
     1493475034503577611,
     1494134900360744961,
-    1487891283102924961
+    1487891283102924961,
 ]
 
-
-# =========================
-# VIEW
-# =========================
 
 class PactoProibidoView(discord.ui.View):
     def __init__(self, membro: discord.Member):
         super().__init__(timeout=300)
-
         self.membro = membro
         self.respondido = False
 
-    @discord.ui.button(
-        label="Aceitar Pacto",
-        emoji="☠️",
-        style=discord.ButtonStyle.danger
-    )
-    async def aceitar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
+    @discord.ui.button(label="Aceitar Pacto", emoji="☠️", style=discord.ButtonStyle.danger)
+    async def aceitar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.membro.id:
-            await interaction.response.send_message(
-                "❌ Este pacto não pertence a você.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Este pacto não pertence a você.", ephemeral=True)
             return
 
         if self.respondido:
-            await interaction.response.send_message(
-                "⚠️ Este pacto já foi decidido.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("⚠️ Este pacto já foi decidido.", ephemeral=True)
             return
 
         self.respondido = True
-
-        adicionar_moedas(
-            self.membro.id,
-            RECOMPENSA_PACTO
-        )
+        adicionar_moedas(self.membro.id, RECOMPENSA_PACTO)
 
         cargo_removido = None
 
@@ -107,48 +77,24 @@ class PactoProibidoView(discord.ui.View):
             title="☠️ PACTO ASSINADO",
             description=(
                 "O Cassino do Diabo aceitou sua decisão.\n\n"
-
-                f"🪙 Você recebeu "
-                f"**{RECOMPENSA_PACTO:,} Moedas do Diabo**.\n\n"
-
+                f"🪙 Você recebeu **{RECOMPENSA_PACTO:,} Moedas do Diabo**.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
                 f"{f'🎭 Cargo perdido: **{cargo_removido.name}**' if cargo_removido else '🎭 Nenhum cargo pôde ser removido.'}\n\n"
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
                 "> A casa sempre cobra."
             ),
             color=0x8B0000
         )
 
         embed.set_image(url=IMAGEM_PACTO_PROIBIDO)
+        embed.set_footer(text="Cassino do Diabo • Pacto Proibido")
 
-        embed.set_footer(
-            text="Cassino do Diabo • Pacto Proibido"
-        )
+        await interaction.response.edit_message(embed=embed, view=self)
 
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
-
-    @discord.ui.button(
-        label="Recusar",
-        emoji="❌",
-        style=discord.ButtonStyle.secondary
-    )
-    async def recusar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
+    @discord.ui.button(label="Recusar", emoji="❌", style=discord.ButtonStyle.secondary)
+    async def recusar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.membro.id:
-            await interaction.response.send_message(
-                "❌ Este pacto não pertence a você.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Este pacto não pertence a você.", ephemeral=True)
             return
 
         self.respondido = True
@@ -160,38 +106,84 @@ class PactoProibidoView(discord.ui.View):
             title="📜 PACTO RECUSADO",
             description=(
                 "Você recusou a proposta do Cassino.\n\n"
-
                 "> Talvez ele não ofereça novamente."
             ),
             color=0x2C2C2C
         )
 
         embed.set_image(url=IMAGEM_PACTO_PROIBIDO)
+        embed.set_footer(text="Cassino do Diabo • Pacto Proibido")
 
-        embed.set_footer(
-            text="Cassino do Diabo • Pacto Proibido"
-        )
+        await interaction.response.edit_message(embed=embed, view=self)
 
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
-
-
-# =========================
-# COG
-# =========================
 
 class Pactos(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-        # evita spam
         self.cooldown_dm = set()
+
+    async def enviar_pacto_dm(self, membro: discord.Member):
+        embed = discord.Embed(
+            title="☠️ UMA CARTA NEGRA APARECEU",
+            description=(
+                "O Cassino do Diabo observou seus movimentos.\n\n"
+                "Um **Pacto Proibido** foi enviado diretamente a você.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🪙 Recompensa:\n"
+                f"**{RECOMPENSA_PACTO:,} Moedas do Diabo**\n\n"
+                "🎭 Consequência:\n"
+                "Você perderá um cargo aleatório.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "> Toda fortuna exige um sacrifício."
+            ),
+            color=0x8B0000
+        )
+
+        embed.set_image(url=IMAGEM_PACTO_PROIBIDO)
+        embed.set_footer(text="Cassino do Diabo • Pacto Proibido")
+
+        await membro.send(
+            embed=embed,
+            view=PactoProibidoView(membro)
+        )
+
+    @commands.command(name="pactos")
+    @commands.has_permissions(administrator=True)
+    async def pactos(self, ctx):
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+        membros_validos = [
+            membro for membro in ctx.guild.members
+            if not membro.bot
+        ]
+
+        escolhidos = random.sample(
+            membros_validos,
+            min(6, len(membros_validos))
+        )
+
+        if ctx.author not in escolhidos:
+            escolhidos.append(ctx.author)
+
+        enviados = 0
+
+        for membro in escolhidos:
+            try:
+                await self.enviar_pacto_dm(membro)
+                enviados += 1
+            except Exception:
+                pass
+
+        await ctx.send(
+            f"☠️ Pactos enviados para **{enviados}** membro(s).",
+            delete_after=10
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-
         if message.author.bot:
             return
 
@@ -208,50 +200,11 @@ class Pactos(commands.Cog):
 
         self.cooldown_dm.add(message.author.id)
 
-        embed = discord.Embed(
-            title="☠️ UMA CARTA NEGRA APARECEU",
-            description=(
-                "O Cassino do Diabo observou suas ações.\n\n"
-
-                "Um **Pacto Proibido** foi enviado diretamente a você.\n\n"
-
-                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
-                f"🪙 Recompensa:\n"
-                f"**{RECOMPENSA_PACTO:,} Moedas do Diabo**\n\n"
-
-                "🎭 Consequência:\n"
-                "Você perderá um cargo aleatório.\n\n"
-
-                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
-                "Aceitar este pacto pode mudar "
-                "sua posição dentro da Família.\n\n"
-
-                "> Toda fortuna exige um sacrifício."
-            ),
-            color=0x8B0000
-        )
-
-        embed.set_image(url=IMAGEM_PACTO_PROIBIDO)
-
-        embed.set_footer(
-            text="Cassino do Diabo • Pacto Proibido"
-        )
-
         try:
-            await message.author.send(
-                embed=embed,
-                view=PactoProibidoView(message.author)
-            )
-
+            await self.enviar_pacto_dm(message.author)
         except discord.Forbidden:
             pass
 
-
-# =========================
-# SETUP
-# =========================
 
 async def setup(bot):
     await bot.add_cog(Pactos(bot))
