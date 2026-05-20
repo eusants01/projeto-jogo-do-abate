@@ -2,6 +2,7 @@ import random
 import asyncio
 import datetime
 import time
+import json
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -828,6 +829,201 @@ COOLDOWN_ATAQUE = 5
 
 BOSS_ATIVO = None
 
+# =========================
+# PERSISTÊNCIA ANTI-PERDA DE RAID
+# =========================
+# Salva o boss ativo no PostgreSQL para não perder HP/danos ao dar push/restart.
+# Não cria arquivos novos e não mexe em dados de família/abate/inventário.
+
+def criar_tabelas_raid():
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS raid_boss_ativo (
+            singleton BOOLEAN PRIMARY KEY DEFAULT TRUE,
+            boss_nome TEXT NOT NULL,
+            boss_json TEXT NOT NULL,
+            canal_id BIGINT,
+            mensagem_id BIGINT,
+            vida INTEGER NOT NULL,
+            max_vida INTEGER NOT NULL,
+            danos_json TEXT NOT NULL DEFAULT '{}',
+            ultimo_hit BIGINT,
+            agressividade INTEGER NOT NULL DEFAULT 1,
+            turnos INTEGER NOT NULL DEFAULT 0,
+            finalizado BOOLEAN NOT NULL DEFAULT FALSE,
+            iniciou_em TIMESTAMP DEFAULT NOW(),
+            atualizado_em TIMESTAMP DEFAULT NOW()
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def salvar_boss_ativo(view):
+    if not view or view.finalizado:
+        return
+
+    try:
+        criar_tabelas_raid()
+
+        canal_id = view.mensagem.channel.id if view.mensagem else None
+        mensagem_id = view.mensagem.id if view.mensagem else None
+
+        dados_dano = {str(uid): int(dmg) for uid, dmg in view.danos.items()}
+
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO raid_boss_ativo (
+                singleton, boss_nome, boss_json, canal_id, mensagem_id,
+                vida, max_vida, danos_json, ultimo_hit, agressividade,
+                turnos, finalizado, atualizado_em
+            )
+            VALUES (
+                TRUE, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, NOW()
+            )
+            ON CONFLICT (singleton) DO UPDATE SET
+                boss_nome = EXCLUDED.boss_nome,
+                boss_json = EXCLUDED.boss_json,
+                canal_id = EXCLUDED.canal_id,
+                mensagem_id = EXCLUDED.mensagem_id,
+                vida = EXCLUDED.vida,
+                max_vida = EXCLUDED.max_vida,
+                danos_json = EXCLUDED.danos_json,
+                ultimo_hit = EXCLUDED.ultimo_hit,
+                agressividade = EXCLUDED.agressividade,
+                turnos = EXCLUDED.turnos,
+                finalizado = EXCLUDED.finalizado,
+                atualizado_em = NOW()
+            """,
+            (
+                view.boss.get("nome"),
+                json.dumps(view.boss, ensure_ascii=False),
+                canal_id,
+                mensagem_id,
+                int(view.vida),
+                int(view.max_vida),
+                json.dumps(dados_dano, ensure_ascii=False),
+                view.ultimo_hit,
+                int(view.agressividade),
+                int(view.turnos),
+                bool(view.finalizado),
+            )
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[PERSISTÊNCIA RAID] Erro ao salvar boss ativo: {e}")
+
+
+def carregar_boss_ativo():
+    try:
+        criar_tabelas_raid()
+
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT boss_json, canal_id, mensagem_id, vida, max_vida,
+                   danos_json, ultimo_hit, agressividade, turnos, finalizado
+            FROM raid_boss_ativo
+            WHERE singleton = TRUE
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        boss_json, canal_id, mensagem_id, vida, max_vida, danos_json, ultimo_hit, agressividade, turnos, finalizado = row
+
+        if finalizado:
+            limpar_boss_ativo()
+            return None
+
+        danos_raw = json.loads(danos_json or "{}")
+        danos = {int(uid): int(dmg) for uid, dmg in danos_raw.items()}
+
+        return {
+            "boss": json.loads(boss_json),
+            "canal_id": canal_id,
+            "mensagem_id": mensagem_id,
+            "vida": int(vida),
+            "max_vida": int(max_vida),
+            "danos": danos,
+            "ultimo_hit": int(ultimo_hit) if ultimo_hit else None,
+            "agressividade": int(agressividade),
+            "turnos": int(turnos),
+        }
+    except Exception as e:
+        print(f"[PERSISTÊNCIA RAID] Erro ao carregar boss ativo: {e}")
+        return None
+
+
+def limpar_boss_ativo():
+    try:
+        criar_tabelas_raid()
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM raid_boss_ativo WHERE singleton = TRUE")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[PERSISTÊNCIA RAID] Erro ao limpar boss ativo: {e}")
+
+
+def calcular_dano_com_buffs(user_id: int, dano_base: int):
+    """
+    Integração real com as lojas:
+    - furia: +40% dano
+    - critico: dobra dano
+    - berserk: triplica dano, mas aumenta corrupção
+    """
+    dano = int(dano_base)
+    efeitos = []
+
+    if consumir_buff(user_id, "furia", 1):
+        bonus = max(1, int(dano * 0.40))
+        dano += bonus
+        efeitos.append(f"🔥 Fúria +{bonus}")
+
+    if consumir_buff(user_id, "critico", 1):
+        dano *= 2
+        efeitos.append("💥 Crítico x2")
+
+    if consumir_buff(user_id, "berserk", 1):
+        dano *= 3
+        corrupcao = adicionar_corrupcao(user_id, 3)
+        efeitos.append(f"☠️ Berserk x3 | Corrupção: {corrupcao}")
+
+    return max(1, dano), efeitos
+
+
+def aplicar_defesa_boss(user_id: int, dano: int):
+    """
+    Integração defensiva com a loja:
+    - escudo reduz dano recebido do boss em 50%
+    """
+    dano = int(dano)
+
+    if dano <= 0:
+        return 0, False
+
+    if consumir_buff(user_id, "escudo", 1):
+        dano = max(0, dano // 2)
+        return dano, True
+
+    return dano, False
+
+
 
 # =========================
 # BOSSES
@@ -1175,7 +1371,7 @@ def recompensar_moedas(user_id: int, quantidade: int):
 # VIEW DO BOSS
 # =========================
 class BossView(discord.ui.View):
-    def __init__(self, boss):
+    def __init__(self, boss, estado_salvo=None):
         super().__init__(timeout=boss["tempo"])
 
         self.boss = boss.copy()
@@ -1183,12 +1379,22 @@ class BossView(discord.ui.View):
         self.max_vida = self.boss["vida"]
         self.danos = {}
         self.ultimo_ataque = {}
+        self.defendendo = set()
         self.finalizado = False
         self.mensagem = None
         self.ultimo_hit = None
         self.agressividade = self.boss.get("agressividade", 1)
         self.agressividade_max = self.boss.get("agressividade_max", 5)
         self.turnos = 0
+        self.fases_anunciadas = set()
+
+        if estado_salvo:
+            self.vida = estado_salvo.get("vida", self.vida)
+            self.max_vida = estado_salvo.get("max_vida", self.max_vida)
+            self.danos = estado_salvo.get("danos", {})
+            self.ultimo_hit = estado_salvo.get("ultimo_hit")
+            self.agressividade = estado_salvo.get("agressividade", self.agressividade)
+            self.turnos = estado_salvo.get("turnos", self.turnos)
 
     def barra(self):
         if self.max_vida <= 0:
@@ -1218,15 +1424,18 @@ class BossView(discord.ui.View):
         pct = max(0, self.vida) / self.max_vida
 
         if pct <= 0.10:
-            return "🔥 **CRÍTICO — O boss está desesperado.**"
+            return "🌑 **FASE FINAL — Despertar absoluto. O boss está no limite.**"
 
-        if pct <= 0.30:
-            return "🟧 **Fúria elevada — ataques mais perigosos.**"
+        if pct <= 0.25:
+            return "🩸 **FASE 3 — Domínio instável. Os ataques estão muito mais perigosos.**"
 
-        if pct <= 0.60:
-            return "🟨 **Instável — a pressão está aumentando.**"
+        if pct <= 0.50:
+            return "🔥 **FASE 2 — Agressividade elevada. O boss começou a pressionar.**"
 
-        return "🟥 **Controle inicial — o boss ainda está firme.**"
+        if pct <= 0.75:
+            return "🟧 **FASE 1 — Energia subindo. A batalha ficou séria.**"
+
+        return "🟥 **INÍCIO — O boss ainda está firme.**"
 
     def cor_embed(self):
         if self.boss.get("categoria") == "Cuphead":
@@ -1265,9 +1474,43 @@ class BossView(discord.ui.View):
 
         embed.add_field(name="🏆 Ranking de Dano", value=texto, inline=False)
         embed.set_image(url=self.boss["imagem"])
-        embed.set_footer(text="Família Sant's • Raid Boss • A casa sempre observa")
+        embed.set_footer(text="Família Sant's • Raid Boss • Progresso salvo automaticamente")
 
         return embed
+
+    async def verificar_fase(self, canal):
+        pct = max(0, self.vida) / self.max_vida
+
+        fases = [
+            (0.75, "fase_75", "🟧 **FASE 1 DESPERTADA**", "A energia do boss começou a distorcer a arena."),
+            (0.50, "fase_50", "🔥 **FASE 2 ATIVADA**", "A pressão aumentou. O boss está muito mais agressivo."),
+            (0.25, "fase_25", "🩸 **FASE 3 — DOMÍNIO INSTÁVEL**", "O domínio começa a esmagar os jogadores. Cuidado com os contra-ataques."),
+            (0.10, "fase_10", "🌑 **FASE FINAL — DESESPERO ABSOLUTO**", "O boss está no limite. Os próximos golpes decidirão a raid."),
+        ]
+
+        for limite, chave, titulo, descricao in fases:
+            if pct <= limite and chave not in self.fases_anunciadas:
+                self.fases_anunciadas.add(chave)
+                self.agressividade = min(self.agressividade + 1, self.agressividade_max)
+
+                embed = discord.Embed(
+                    title=titulo,
+                    description=(
+                        f"💀 **Boss:** {self.boss['nome']}\n"
+                        f"{descricao}\n\n"
+                        f"🔥 Agressividade atual: **{self.agressividade}/{self.agressividade_max}**"
+                    ),
+                    color=self.cor_embed()
+                )
+                embed.set_image(url=self.boss["imagem"])
+                embed.set_footer(text="Família Sant's • Mudança de Fase")
+                try:
+                    await canal.send(embed=embed, delete_after=20)
+                except Exception:
+                    pass
+
+                salvar_boss_ativo(self)
+                break
 
     async def enviar_ataque_temporario(self, canal, texto: str):
         try:
@@ -1276,12 +1519,24 @@ class BossView(discord.ui.View):
             pass
 
     async def causar_dano_em_jogador(self, user_id: int, dano: int):
-        resultado = remover_vida(user_id, dano)
+        dano_final, usou_escudo = aplicar_defesa_boss(user_id, dano)
+
+        if user_id in self.defendendo:
+            dano_final = max(0, dano_final // 2)
+            self.defendendo.discard(user_id)
+
+        if dano_final <= 0:
+            jogador = buscar_jogador(user_id)
+            return normalizar_linha_jogador(jogador) if jogador else None
+
+        resultado = remover_vida(user_id, dano_final)
 
         if not resultado:
             return None
 
         dados = normalizar_linha_jogador(resultado)
+        dados["dano_recebido"] = dano_final
+        dados["escudo_usado"] = usou_escudo
 
         return dados
 
@@ -1484,6 +1739,7 @@ class BossView(discord.ui.View):
             self.finalizado = True
 
         BOSS_ATIVO = None
+        limpar_boss_ativo()
 
         if not self.danos:
             return
@@ -1521,11 +1777,13 @@ class BossView(discord.ui.View):
 
         if buscar_jogador(top):
             adicionar_abate(top, drop_top["bonus_abate"])
+            adicionar_item(top, drop_top["nome"], 1)
 
         recompensar_moedas(top, drop_top["bonus_moedas"])
 
         if self.ultimo_hit and buscar_jogador(self.ultimo_hit):
             adicionar_abate(self.ultimo_hit, drop_final["bonus_abate"])
+            adicionar_item(self.ultimo_hit, drop_final["nome"], 1)
 
         if self.ultimo_hit:
             recompensar_moedas(self.ultimo_hit, drop_final["bonus_moedas"])
@@ -1596,6 +1854,7 @@ class BossView(discord.ui.View):
 
         self.finalizado = True
         BOSS_ATIVO = None
+        limpar_boss_ativo()
 
         for item in self.children:
             item.disabled = True
@@ -1690,13 +1949,24 @@ class BossView(discord.ui.View):
         if self.turnos % 8 == 0 and self.agressividade < self.agressividade_max:
             self.agressividade += 1
 
-        dano = random.randint(self.boss["dano_min"], self.boss["dano_max"])
+        dano_base = random.randint(self.boss["dano_min"], self.boss["dano_max"])
+        dano, efeitos = calcular_dano_com_buffs(interaction.user.id, dano_base)
+
         self.vida -= dano
         self.danos[interaction.user.id] = self.danos.get(interaction.user.id, 0) + dano
         self.ultimo_hit = interaction.user.id
 
+        await self.verificar_fase(interaction.channel)
+        salvar_boss_ativo(self)
+
         # Atualiza primeiro o painel principal
         await interaction.response.edit_message(embed=self.embed(), view=self)
+
+        if efeitos:
+            await self.enviar_ataque_temporario(
+                interaction.channel,
+                f"✨ {interaction.user.mention} ativou efeitos da loja:\n" + "\n".join([f"• {e}" for e in efeitos]) + f"\n💥 Dano causado: **{dano:,}**"
+            )
 
         # Contra-ataque básico
         if random.randint(1, 100) <= self.boss.get("chance_ataque", 20):
@@ -1721,6 +1991,7 @@ class BossView(discord.ui.View):
                 await self.enviar_ataque_temporario(interaction.channel, texto)
 
         await self.usar_habilidade(interaction)
+        salvar_boss_ativo(self)
 
         if self.vida <= 0:
             self.vida = 0
@@ -1737,12 +2008,154 @@ class BossView(discord.ui.View):
             await self.finalizar(interaction.channel, interaction.guild)
 
 
+    @discord.ui.button(
+        label="Técnica",
+        emoji="✨",
+        style=discord.ButtonStyle.primary,
+        custom_id="boss_tecnica"
+    )
+    async def tecnica(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.finalizado:
+            await interaction.response.send_message("💀 Esse boss já foi finalizado.", ephemeral=True)
+            return
+
+        jogador = buscar_jogador(interaction.user.id)
+        if not jogador or normalizar_linha_jogador(jogador)["status"] != "vivo":
+            await interaction.response.send_message("🚫 Você precisa estar vivo no **Jogo do Abate**.", ephemeral=True)
+            return
+
+        # A técnica usa buffs de loja sem depender do ataque comum.
+        dano_base = random.randint(
+            max(1, int(self.boss["dano_min"] * 0.7)),
+            max(2, int(self.boss["dano_max"] * 0.9))
+        )
+        dano, efeitos = calcular_dano_com_buffs(interaction.user.id, dano_base)
+
+        if not efeitos:
+            await interaction.response.send_message(
+                "✨ Você tentou usar uma técnica, mas não possui `furia`, `critico` ou `berserk` ativo.\n"
+                "Compre itens no Mercado Amaldiçoado ou no Mercado dos Feiticeiros.",
+                ephemeral=True
+            )
+            return
+
+        self.vida -= dano
+        self.danos[interaction.user.id] = self.danos.get(interaction.user.id, 0) + dano
+        self.ultimo_hit = interaction.user.id
+
+        await self.verificar_fase(interaction.channel)
+        salvar_boss_ativo(self)
+        await interaction.response.edit_message(embed=self.embed(), view=self)
+
+        await self.enviar_ataque_temporario(
+            interaction.channel,
+            f"✨ {interaction.user.mention} usou uma **Técnica Jujutsu**!\n"
+            + "\n".join([f"• {e}" for e in efeitos])
+            + f"\n💥 Dano causado: **{dano:,}**"
+        )
+
+        if self.vida <= 0:
+            self.vida = 0
+            self.finalizado = True
+            for item in self.children:
+                item.disabled = True
+            try:
+                await self.mensagem.edit(embed=self.embed(), view=self)
+            except Exception:
+                pass
+            await self.finalizar(interaction.channel, interaction.guild)
+
+    @discord.ui.button(
+        label="Defender",
+        emoji="🛡️",
+        style=discord.ButtonStyle.success,
+        custom_id="boss_defender"
+    )
+    async def defender(self, interaction: discord.Interaction, button: discord.ui.Button):
+        jogador = buscar_jogador(interaction.user.id)
+        if not jogador or normalizar_linha_jogador(jogador)["status"] != "vivo":
+            await interaction.response.send_message("🚫 Você precisa estar vivo para defender.", ephemeral=True)
+            return
+
+        self.defendendo.add(interaction.user.id)
+        salvar_boss_ativo(self)
+        await interaction.response.send_message(
+            "🛡️ Defesa preparada! O próximo dano recebido nesta raid será reduzido.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Purificar",
+        emoji="🧿",
+        style=discord.ButtonStyle.secondary,
+        custom_id="boss_purificar"
+    )
+    async def purificar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        jogador = buscar_jogador(interaction.user.id)
+        if not jogador:
+            await interaction.response.send_message("🚫 Você precisa estar registrado no **Jogo do Abate**.", ephemeral=True)
+            return
+
+        saldo_sorte = quantidade_buff(interaction.user.id, "sorte")
+        if saldo_sorte <= 0:
+            await interaction.response.send_message(
+                "🧿 Você precisa de pelo menos **1 buff de sorte** para canalizar uma purificação rápida na raid.",
+                ephemeral=True
+            )
+            return
+
+        consumir_buff(interaction.user.id, "sorte", 1)
+        nova_corrupcao = reduzir_corrupcao(interaction.user.id, 8)
+
+        await interaction.response.send_message(
+            f"🧿 Purificação rápida concluída.\n🩸 Corrupção atual: **{nova_corrupcao}**",
+            ephemeral=True
+        )
+
+
+
 # =========================
 # COG
 # =========================
 class BossRaid(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        criar_tabelas_raid()
+
+    async def cog_load(self):
+        # Recupera boss ativo após push/restart/redeploy.
+        self.bot.loop.create_task(self.recuperar_boss_ativo())
+
+    async def recuperar_boss_ativo(self):
+        global BOSS_ATIVO
+
+        await self.bot.wait_until_ready()
+
+        if BOSS_ATIVO is not None:
+            return
+
+        estado = carregar_boss_ativo()
+        if not estado:
+            return
+
+        canal = self.bot.get_channel(estado.get("canal_id"))
+        if not canal:
+            print("[RAID] Boss salvo encontrado, mas canal não foi localizado.")
+            return
+
+        view = BossView(estado["boss"], estado_salvo=estado)
+        embed = view.embed()
+        embed.title = f"♻️ RAID RECUPERADA — {estado['boss']['nome']}"
+        embed.description += "\n\n♻️ **Esta raid foi recuperada automaticamente após reinício/push.**"
+
+        try:
+            msg = await canal.send(embed=embed, view=view)
+            view.mensagem = msg
+            BOSS_ATIVO = view
+            salvar_boss_ativo(view)
+            print("[RAID] Boss ativo recuperado com sucesso.")
+        except Exception as e:
+            print(f"[RAID] Erro ao recuperar boss ativo: {e}")
 
     @commands.command(name="boss")
     @commands.has_permissions(administrator=True)
@@ -1778,6 +2191,7 @@ class BossRaid(commands.Cog):
             msg = await ctx.send(embed=view.embed(), view=view)
             view.mensagem = msg
             BOSS_ATIVO = view
+            salvar_boss_ativo(view)
 
         except Exception as e:
             print(f"[ERRO AO INVOCAR BOSS] {repr(e)}")
@@ -1829,6 +2243,7 @@ class BossRaid(commands.Cog):
                 pass
 
         BOSS_ATIVO = None
+        limpar_boss_ativo()
 
         await ctx.send(
             "🧹 Boss ativo limpo manualmente. Agora outro boss pode ser invocado.",
@@ -1861,6 +2276,7 @@ class BossRaid(commands.Cog):
             pass
 
         resetar_jogo()
+        limpar_boss_ativo()
 
         await ctx.send(
             "🩸 **Jogo do Abate resetado completamente.**\n"

@@ -68,6 +68,9 @@ async def carregar_cogs():
     await bot.load_extension("cogs.familias")
     await bot.load_extension("cogs.loja")
     await bot.load_extension("cogs.pactos")
+    await bot.load_extension("cogs.mercado")
+    await bot.load_extension("cogs.mercado_amaldicoado")
+    await bot.load_extension("cogs.loja_feiticeiros")
 
     # 🎰 Cassino do Diabo
     await bot.load_extension("cogs.painel_cassino")
