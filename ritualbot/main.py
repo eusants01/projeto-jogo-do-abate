@@ -73,6 +73,7 @@ async def carregar_cogs():
     await bot.load_extension("cogs.painel_cassino")
     await bot.load_extension("cogs.economia")
     await bot.load_extension("cogs.roleta")
+    await bot.load_extension("cogs.leilao")
 
 
 async def main():
