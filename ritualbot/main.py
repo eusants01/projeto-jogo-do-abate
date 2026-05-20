@@ -66,7 +66,6 @@ async def carregar_cogs():
     await bot.load_extension("cogs.abate")
     await bot.load_extension("cogs.maldicoes")
     await bot.load_extension("cogs.familias")
-    await bot.load_extension("cogs.loja")
     await bot.load_extension("cogs.pactos")
     await bot.load_extension("cogs.mercado")
     await bot.load_extension("cogs.mercado_amaldicoado")

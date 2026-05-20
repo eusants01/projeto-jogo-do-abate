@@ -684,7 +684,7 @@ class Maldicoes(commands.Cog):
     async def cog_load(self):
         self.tarefa_maldicoes = asyncio.create_task(self.sistema_maldicoes())
 
-    def cog_unload(self):
+    async def cog_unload(self):
         if self.tarefa_maldicoes:
             self.tarefa_maldicoes.cancel()
 
@@ -1235,9 +1235,6 @@ BOSSES = [
         "dano_habilidade": 17,
         "drop_lendario": "Coroa Açucarada",
         "frase": "A doçura acabou. Agora só resta o veneno.",
-    },
-    {
-    
     },
 ]
 
