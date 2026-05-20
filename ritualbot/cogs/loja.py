@@ -32,7 +32,7 @@ VIDAS_MAXIMAS = 750
 
 ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
 
-BANNER_LOJA = "https://i.imgur.com/ypNuTwX.png"
+BANNER_LOJA = "https://cdn.discordapp.com/attachments/961677475191078992/1506544174059491409/content.png?ex=6a0ea619&is=6a0d5499&hm=772c937612494c96511043a17468745e2245b6f8e2dd6faa00d4fde920b20cad&"
 
 NOME_LOJA = "Mercado Amaldiçoado"
 
