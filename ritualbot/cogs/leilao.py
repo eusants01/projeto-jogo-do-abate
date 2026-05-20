@@ -451,7 +451,7 @@ class Leilao(commands.Cog):
                 "utilizando **🪙 Moedas do Diabo**.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 "📦 **Itens possíveis:**\n"
-                "• Cargos temporários\n"
+                "• Cargos Exclusivos\n"
                 "• Gamepasses\n"
                 "• VIP\n"
                 "• Recompensas especiais\n"
