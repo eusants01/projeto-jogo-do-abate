@@ -2340,5 +2340,3 @@ async def setup(bot):
 
     await bot.add_cog(Maldicoes(bot))
     await bot.add_cog(BossRaid(bot))
-
-    
