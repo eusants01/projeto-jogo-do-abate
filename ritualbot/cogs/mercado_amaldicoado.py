@@ -24,7 +24,7 @@ VIDAS_MAXIMAS = 750
 ITEM_FRAGMENTO = "Fragmento Amaldiçoado"
 
 NOME_LOJA = "Mercado dos Feiticeiros"
-BANNER_FEITICEIROS = "https://cdn.discordapp.com/attachments/961677475191078992/1506549974622666813/content.png?ex=6a0eab80&is=6a0d5a00&hm=48b8e598e9a422590deec4a97dcb2fce7ed7b81c19549b7334868f56c8deca02&COLOQUE_AQUI_O_LINK_DO_BANNER"
+BANNER_FEITICEIROS = "https://cdn.discordapp.com/attachments/961677475191078992/1506549974622666813/content.png?ex=6a0eab80&is=6a0d5a00&hm=48b8e598e9a422590deec4a97dcb2fce7ed7b81c19549b7334868f56c8deca02"
 
 COR_AZUL = 0x3498DB
 COR_AZUL_CLARO = 0x5DADE2
@@ -388,6 +388,72 @@ async def enviar_ephemeral(interaction: discord.Interaction, content=None, embed
         await interaction.response.send_message(content=content, embed=embed, view=view, ephemeral=True)
 
 
+
+# =====================================================
+# SISTEMA DE TÉCNICAS EQUIPÁVEIS
+# =====================================================
+
+def criar_tabelas_tecnicas():
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tecnicas_equipadas (
+            user_id BIGINT PRIMARY KEY,
+            tecnica TEXT,
+            reliquia TEXT,
+            atualizado_em TIMESTAMP DEFAULT NOW()
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def salvar_tecnica(user_id: int, tecnica: str):
+    criar_tabelas_tecnicas()
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO tecnicas_equipadas (user_id, tecnica, atualizado_em)
+        VALUES (%s, %s, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+            tecnica = EXCLUDED.tecnica,
+            atualizado_em = NOW()
+        """,
+        (user_id, tecnica)
+    )
+    conn.commit()
+    conn.close()
+
+
+def pegar_tecnica(user_id: int):
+    try:
+        criar_tabelas_tecnicas()
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT tecnica FROM tecnicas_equipadas WHERE user_id = %s",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        return row[0] if not isinstance(row, dict) else row.get("tecnica")
+    except Exception as e:
+        print(f"[FEITICEIROS] Erro ao pegar técnica equipada: {e}")
+        return None
+
+
+def nome_tecnica_equipada(user_id: int):
+    tecnica = pegar_tecnica(user_id)
+    return tecnica if tecnica else "Nenhuma técnica equipada"
+
+
 # =====================================================
 # EMBEDS
 # =====================================================
@@ -505,7 +571,8 @@ def criar_embed_inventario(membro: discord.Member | discord.User):
         description=(
             f"🎖️ **Classe:** {classe_do_feiticeiro(saldo, corrupcao)}\n"
             f"🧩 **Fragmentos:** `{saldo}`\n"
-            f"🩸 **Corrupção:** {barra_corrupcao(corrupcao)}"
+            f"🩸 **Corrupção:** {barra_corrupcao(corrupcao)}\n"
+            f"⚔️ **Técnica Equipada:** `{nome_tecnica_equipada(membro.id)}`"
         ),
         color=COR_AZUL,
     )
@@ -584,6 +651,10 @@ async def executar_compra_feiticeiro(interaction: discord.Interaction, codigo: s
 
     if tipo == "buff":
         adicionar_buff(interaction.user.id, item["buff"], item["quantidade"])
+
+        if item.get("categoria") == "tecnica":
+            salvar_tecnica(interaction.user.id, item["nome"])
+
         raridade = pegar_raridade(item)
 
         embed = discord.Embed(
@@ -602,6 +673,9 @@ async def executar_compra_feiticeiro(interaction: discord.Interaction, codigo: s
     if tipo == "multi_buff":
         for buff_data in item["buffs"]:
             adicionar_buff(interaction.user.id, buff_data["buff"], buff_data["quantidade"])
+
+        if item.get("categoria") == "tecnica":
+            salvar_tecnica(interaction.user.id, item["nome"])
 
         buffs_texto = "\n".join(
             [f"• **{b['buff']}** x{b['quantidade']}" for b in item["buffs"]]
@@ -747,6 +821,7 @@ class LojaFeiticeiros(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         criar_tabelas_economia()
+        criar_tabelas_tecnicas()
 
     @commands.command(name="painel_feiticeiros")
     @commands.has_permissions(administrator=True)
@@ -804,6 +879,47 @@ class LojaFeiticeiros(commands.Cog):
             followup = Followup()
 
         await executar_compra_feiticeiro(InteracaoManual(), codigo)
+
+
+    @commands.command(name="equipar_tecnica")
+    async def equipar_tecnica(self, ctx, *, nome: str = None):
+        if not nome:
+            tecnicas = [
+                item["nome"]
+                for item in LOJA_FEITICEIROS.values()
+                if item.get("categoria") == "tecnica"
+            ]
+            await ctx.reply(
+                "❌ Use `!equipar_tecnica <nome>`.\n\n"
+                f"Técnicas disponíveis:\n`{', '.join(tecnicas)}`"
+            )
+            return
+
+        nome_limpo = nome.lower().strip()
+        item_encontrado = None
+
+        for item in LOJA_FEITICEIROS.values():
+            if item.get("categoria") == "tecnica" and item["nome"].lower() == nome_limpo:
+                item_encontrado = item
+                break
+
+        if not item_encontrado:
+            await ctx.reply("❌ Técnica não encontrada no Mercado dos Feiticeiros.")
+            return
+
+        salvar_tecnica(ctx.author.id, item_encontrado["nome"])
+
+        embed = discord.Embed(
+            title="⚔️ Técnica equipada",
+            description=(
+                f"{ctx.author.mention}, sua técnica foi equipada com sucesso.\n\n"
+                f"✨ Técnica atual: **{item_encontrado['nome']}**"
+            ),
+            color=COR_AZUL
+        )
+        embed.set_footer(text="Família Sant's • Registro dos Feiticeiros")
+        await ctx.reply(embed=embed)
+
 
     @painel_feiticeiros.error
     async def painel_feiticeiros_error(self, ctx, error):

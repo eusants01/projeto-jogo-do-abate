@@ -1025,6 +1025,59 @@ def aplicar_defesa_boss(user_id: int, dano: int):
 
 
 
+
+# =========================
+# SISTEMA DE TÉCNICAS EQUIPADAS
+# =========================
+def pegar_tecnica_equipada(user_id):
+    try:
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT tecnica FROM tecnicas_equipadas WHERE user_id = %s",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return row[0]
+
+    except Exception:
+        pass
+
+    return None
+
+
+def aplicar_tecnica_especial(user_id, boss_nome, dano):
+    tecnica = pegar_tecnica_equipada(user_id)
+
+    bonus_texto = []
+
+    if tecnica == "Seis Olhos":
+        dano = int(dano * 1.20)
+        bonus_texto.append("👁️ Seis Olhos")
+
+    elif tecnica == "Black Flash":
+        if random.randint(1, 100) <= 20:
+            dano *= 4
+            bonus_texto.append("⚫ BLACK FLASH")
+
+    elif tecnica == "Manipulação de Sangue":
+        dano = int(dano * 1.35)
+        bonus_texto.append("🩸 Sangue Amaldiçoado")
+
+    elif tecnica == "10 Sombras":
+        if random.randint(1, 100) <= 30:
+            dano += 250
+            bonus_texto.append("🌑 Shikigami Invocado")
+
+    if boss_nome.lower() == "mahoraga" and tecnica:
+        dano = int(dano * 0.90)
+
+    return max(1, dano), bonus_texto
+
+
 # =========================
 # BOSSES
 # =========================
@@ -1471,7 +1524,7 @@ class BossView(discord.ui.View):
 
         embed.add_field(name="🏆 Ranking de Dano", value=texto, inline=False)
         embed.set_image(url=self.boss["imagem"])
-        embed.set_footer(text="Família Sant's • Raid Boss • Progresso salvo automaticamente")
+        embed.set_footer(text="Família Sant's • Sistema Jujutsu MMORPG • Raid Persistente")
 
         return embed
 
