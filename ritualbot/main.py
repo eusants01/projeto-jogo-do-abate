@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
@@ -55,26 +56,66 @@ async def on_ready():
     print(f"✅ RitualBot online como {bot.user}")
 
     try:
-        guild = discord.Object(id=GUILD_ID)
-        synced = await bot.tree.sync(guild=guild)
-        print(f"✅ {len(synced)} comandos sincronizados no servidor.")
+        if GUILD_ID:
+            guild = discord.Object(id=GUILD_ID)
+            synced = await bot.tree.sync(guild=guild)
+            print(f"✅ {len(synced)} comandos sincronizados no servidor.")
+        else:
+            synced = await bot.tree.sync()
+            print(f"✅ {len(synced)} comandos sincronizados globalmente.")
     except Exception as e:
         print(f"❌ Erro ao sincronizar comandos: {e}")
 
 
 async def carregar_cogs():
-    await bot.load_extension("cogs.abate")
-    await bot.load_extension("cogs.maldicoes")
-    await bot.load_extension("cogs.familias")
-    await bot.load_extension("cogs.pactos")
-    await bot.load_extension("cogs.mercado_amaldicoado")
-    await bot.load_extension("cogs.loja_feiticeiros")
+    cogs = [
+        "cogs.abate",
+        "cogs.maldicoes",
+        "cogs.familias",
+        "cogs.pactos",
+        "cogs.mercado_amaldicoado",
+        "cogs.loja_feiticeiros",
 
-    # 🎰 Cassino do Diabo
-    await bot.load_extension("cogs.painel_cassino")
-    await bot.load_extension("cogs.economia")
-    await bot.load_extension("cogs.roleta")
-    await bot.load_extension("cogs.leilao")
+        # 🎰 Cassino do Diabo
+        "cogs.painel_cassino",
+        "cogs.economia",
+        "cogs.roleta",
+        "cogs.leilao",
+    ]
+
+    for cog in cogs:
+        try:
+            # Evita carregar a mesma extensão duas vezes
+            if cog in bot.extensions:
+                print(f"⚠️ Cog já carregado, ignorando: {cog}")
+                continue
+
+            await bot.load_extension(cog)
+            print(f"✅ Cog carregado: {cog}")
+
+        except commands.ExtensionAlreadyLoaded:
+            print(f"⚠️ Extensão já estava carregada, ignorando: {cog}")
+
+        except commands.ExtensionNotFound:
+            print(f"❌ Extensão não encontrada: {cog}")
+
+        except commands.NoEntryPointError:
+            print(f"❌ O cog {cog} não possui função setup(bot).")
+
+        except commands.ExtensionFailed as e:
+            # Evita o bot cair por cog duplicado
+            erro = str(e)
+
+            if "already loaded" in erro or "already registered" in erro:
+                print(f"⚠️ Cog duplicado detectado em {cog}, ignorando para evitar crash.")
+                continue
+
+            print(f"❌ Erro ao carregar {cog}: {repr(e)}")
+            raise
+
+        except Exception as e:
+            print(f"❌ Erro inesperado ao carregar {cog}: {repr(e)}")
+            raise
 
 
 async def main():
@@ -87,5 +128,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
