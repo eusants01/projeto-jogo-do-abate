@@ -4,7 +4,120 @@ import discord
 from discord.ext import commands
 from datetime import datetime, timezone
 
-from utils.cassino_db import adicionar_moedas, get_moedas, remover_moedas
+# Importação compatível com diferentes versões do seu utils/cassino_db.py.
+# Corrige o erro: "cannot import name 'get_moedas'".
+from utils import cassino_db as _cassino_db
+
+adicionar_moedas = getattr(_cassino_db, "adicionar_moedas", None)
+remover_moedas = getattr(_cassino_db, "remover_moedas", None)
+get_moedas = getattr(_cassino_db, "get_moedas", None)
+
+# Alguns códigos antigos usam nomes diferentes. Se existir, aproveita automaticamente.
+if adicionar_moedas is None:
+    adicionar_moedas = getattr(_cassino_db, "add_moedas", None) or getattr(_cassino_db, "adicionar_saldo", None)
+
+if remover_moedas is None:
+    remover_moedas = getattr(_cassino_db, "remove_moedas", None) or getattr(_cassino_db, "remover_saldo", None)
+
+if get_moedas is None:
+    get_moedas = (
+        getattr(_cassino_db, "buscar_moedas", None)
+        or getattr(_cassino_db, "consultar_moedas", None)
+        or getattr(_cassino_db, "saldo_usuario", None)
+        or getattr(_cassino_db, "get_saldo", None)
+        or getattr(_cassino_db, "buscar_saldo", None)
+    )
+
+# Fallback final: usa funções do cassino_db se elas não existirem com o nome esperado.
+# Mantém o cog carregando mesmo quando o banco foi refeito.
+import sqlite3
+from pathlib import Path
+
+_DB_CANDIDATOS = [
+    Path("cassino.db"),
+    Path("data/cassino.db"),
+    Path("database/cassino.db"),
+    Path("dados/cassino.db"),
+]
+
+def _achar_db_cassino() -> Path:
+    for db in _DB_CANDIDATOS:
+        if db.exists():
+            return db
+    return Path("cassino.db")
+
+def _garantir_tabela_fallback():
+    db = _achar_db_cassino()
+    db.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios_cassino (
+                user_id INTEGER PRIMARY KEY,
+                moedas INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.commit()
+    return db
+
+def _fallback_get_moedas(user_id: int) -> int:
+    db = _garantir_tabela_fallback()
+    with sqlite3.connect(db) as conn:
+        cur = conn.cursor()
+
+        # Tenta tabelas/colunas mais comuns sem quebrar o bot.
+        tentativas = [
+            ("usuarios_cassino", "user_id", "moedas"),
+            ("usuarios", "user_id", "moedas"),
+            ("economia", "user_id", "moedas"),
+            ("cassino", "user_id", "moedas"),
+            ("usuarios_cassino", "id", "moedas"),
+            ("usuarios", "id", "moedas"),
+            ("economia", "id", "moedas"),
+        ]
+
+        for tabela, coluna_id, coluna_moedas in tentativas:
+            try:
+                cur.execute(f"SELECT {coluna_moedas} FROM {tabela} WHERE {coluna_id} = ?", (int(user_id),))
+                row = cur.fetchone()
+                if row is not None:
+                    return int(row[0] or 0)
+            except sqlite3.Error:
+                continue
+
+        cur.execute("INSERT OR IGNORE INTO usuarios_cassino (user_id, moedas) VALUES (?, 0)", (int(user_id),))
+        conn.commit()
+        return 0
+
+def _fallback_adicionar_moedas(user_id: int, quantidade: int):
+    db = _garantir_tabela_fallback()
+    quantidade = max(0, int(quantidade))
+    with sqlite3.connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("INSERT OR IGNORE INTO usuarios_cassino (user_id, moedas) VALUES (?, 0)", (int(user_id),))
+        cur.execute("UPDATE usuarios_cassino SET moedas = moedas + ? WHERE user_id = ?", (quantidade, int(user_id)))
+        conn.commit()
+
+def _fallback_remover_moedas(user_id: int, quantidade: int):
+    db = _garantir_tabela_fallback()
+    quantidade = max(0, int(quantidade))
+    with sqlite3.connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("INSERT OR IGNORE INTO usuarios_cassino (user_id, moedas) VALUES (?, 0)", (int(user_id),))
+        cur.execute(
+            "UPDATE usuarios_cassino SET moedas = MAX(moedas - ?, 0) WHERE user_id = ?",
+            (quantidade, int(user_id))
+        )
+        conn.commit()
+
+if get_moedas is None:
+    get_moedas = _fallback_get_moedas
+
+if adicionar_moedas is None:
+    adicionar_moedas = _fallback_adicionar_moedas
+
+if remover_moedas is None:
+    remover_moedas = _fallback_remover_moedas
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #                   CONFIGURAÇÕES
@@ -552,7 +665,6 @@ class PactoView(discord.ui.View):
                 "⚠️ Este pacto já foi decidido.", ephemeral=True)
 
         self.respondido = True
-        registrar(self.membro.id, self.raridade, "aceito", 0)
 
         resultado_desc, moedas = await executar_tipo(self.membro, self.pacto)
         registrar(self.membro.id, self.raridade, "aceito", moedas)
