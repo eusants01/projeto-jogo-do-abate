@@ -74,6 +74,7 @@ async def carregar_cogs():
         "cogs.familias",
         "cogs.pactos",
         "cogs.mercado_amaldicoado",
+        "cogs.loja_maldicoes",
         "cogs.loja_feiticeiros",
 
         # 🎰 Cassino do Diabo
