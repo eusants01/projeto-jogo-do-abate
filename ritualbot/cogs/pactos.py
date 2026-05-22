@@ -17,7 +17,7 @@ CUSTO_SEGURO       = 5000    # moedas para proteger cargo
 DURACAO_SEGURO     = 3600    # 1 hora
 COOLDOWN_HORAS     = 3600    # 1 hora entre pactos automáticos
 
-ID_CANAL_LOG       = 0       # 🔧 ID do canal de log
+ID_CANAL_LOG       = 1507228052776681502       # 🔧 ID do canal de log
 ID_CANAL_PUBLICO   = 0       # 🔧 ID do canal de anúncios
 
 IMAGEM_PADRAO      = "https://i.imgur.com/MX7rQpp.png"
