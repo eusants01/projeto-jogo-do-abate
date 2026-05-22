@@ -1,4 +1,4 @@
-name: Discord Updates
+name: Família Sant's • Deploy Logs
 
 on:
   push:
@@ -6,27 +6,95 @@ on:
       - main
 
 jobs:
-  notify:
+  discord-notify:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Discord update
+      - name: Send Premium Discord Deploy Log
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AUTHOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          COMPARE_URL: ${{ github.event.compare }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
+          COMMIT_COUNT=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          jq -n \
+            --arg username "Família Sant's • Deploy System" \
+            --arg avatar "https://cdn-icons-png.flaticon.com/512/906/906324.png" \
+            --arg title "🚀 Nova atualização publicada" \
+            --arg author "$AUTHOR" \
+            --arg repository "$REPOSITORY" \
+            --arg branch "$BRANCH" \
+            --arg commit_url "$COMMIT_URL" \
+            --arg compare_url "$COMPARE_URL" \
+            --arg commit_message "$COMMIT_MESSAGE" \
+            --arg commit_count "$COMMIT_COUNT" \
+            --arg timestamp "$TIMESTAMP" \
+            '{
+              username: $username,
+              avatar_url: $avatar,
+              embeds: [
+                {
+                  title: $title,
+                  description: "```ansi\n\u001b[2;31m[SISTEMA]\u001b[0m Novo deploy enviado para produção.\n\u001b[2;37m[STATUS]\u001b[0m Repositório sincronizado com sucesso.\n```",
+                  color: 13369344,
+                  fields: [
+                    {
+                      name: "📌 Commit",
+                      value: ("```fix\n" + $commit_message + "\n```"),
+                      inline: false
+                    },
+                    {
+                      name: "👤 Desenvolvedor",
+                      value: ("`@" + $author + "`"),
+                      inline: true
+                    },
+                    {
+                      name: "🌿 Branch",
+                      value: ("`" + $branch + "`"),
+                      inline: true
+                    },
+                    {
+                      name: "📦 Repositório",
+                      value: ("`" + $repository + "`"),
+                      inline: true
+                    },
+                    {
+                      name: "📊 Push",
+                      value: ("`" + $commit_count + " commit(s) enviado(s)`"),
+                      inline: true
+                    },
+                    {
+                      name: "🔗 Commit",
+                      value: ("[Visualizar Commit](" + $commit_url + ")"),
+                      inline: true
+                    },
+                    {
+                      name: "🧩 Comparação",
+                      value: ("[Ver Alterações](" + $compare_url + ")"),
+                      inline: true
+                    }
+                  ],
+                  image: {
+                    url: "https://cdn.discordapp.com/attachments/961677475191078992/1507497497013129386/ChatGPT_Image_22_de_mai._de_2026_18_36_44.png?ex=6a121df3&is=6a10cc73&hm=ad11b11c9f9495140310989c347cb28591968981e38cab44c11e9b83c2295bb4&"
+                  },
+                  thumbnail: {
+                    url: "https://cdn.discordapp.com/attachments/961677475191078992/1507497033555247135/imagem_2026-05-22_183429089-removebg-preview.png?ex=6a121d84&is=6a10cc04&hm=c80077741c6cc29bbc802297ca9a8748e49506f3b1ef58c2fbc121555dbfdcad&"
+                  },
+                  footer: {
+                    text: "Família Sant's • Devil Cassino"
+                  },
+                  timestamp: $timestamp
+                }
+              ]
+            }' > payload.json
+
           curl -H "Content-Type: application/json" \
-          -X POST \
-          -d '{
-            "embeds": [{
-              "title": "🚀 Nova atualização enviada",
-              "description": "**RitualBot recebeu uma nova atualização.**\n\n📌 Commit: `${{ github.event.head_commit.message }}`\n👤 Autor: `${{ github.actor }}`\n🔗 Repositório atualizado.",
-              "color": 9109504,
-              "image": {
-                "url": "https://cdn.discordapp.com/attachments/1502524697907302562/1505780976150642708/content.png?ex=6a0bdf50&is=6a0a8dd0&hm=7d3e83e3d37a2588f7ce6315b13f7d4abebf818b07bdbe2999b5b3192be4113e&"
-              },
-              "footer": {
-                "text": "Família Sant’s • Updates Logs"
-              }
-            }]
-          }' \
-          "$DISCORD_WEBHOOK_URL"
+               -X POST \
+               -d @payload.json \
+               "$WEBHOOK_URL"
