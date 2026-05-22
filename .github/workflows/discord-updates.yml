@@ -1,4 +1,4 @@
-name: Família Sant's • Deploy Logs
+name: Familia Sants Deploy Logs
 
 on:
   push:
@@ -20,81 +20,98 @@ jobs:
           COMPARE_URL: ${{ github.event.compare }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          COMMIT_COUNT=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          python3 <<'PY'
+          import os
+          import json
+          import subprocess
+          from datetime import datetime, timezone
 
-          jq -n \
-            --arg username "Família Sant's • Deploy System" \
-            --arg avatar "https://cdn-icons-png.flaticon.com/512/906/906324.png" \
-            --arg title "🚀 Nova atualização publicada" \
-            --arg author "$AUTHOR" \
-            --arg repository "$REPOSITORY" \
-            --arg branch "$BRANCH" \
-            --arg commit_url "$COMMIT_URL" \
-            --arg compare_url "$COMPARE_URL" \
-            --arg commit_message "$COMMIT_MESSAGE" \
-            --arg commit_count "$COMMIT_COUNT" \
-            --arg timestamp "$TIMESTAMP" \
-            '{
-              username: $username,
-              avatar_url: $avatar,
-              embeds: [
-                {
-                  title: $title,
-                  description: "```ansi\n\u001b[2;31m[SISTEMA]\u001b[0m Novo deploy enviado para produção.\n\u001b[2;37m[STATUS]\u001b[0m Repositório sincronizado com sucesso.\n```",
-                  color: 13369344,
-                  fields: [
-                    {
-                      name: "📌 Commit",
-                      value: ("```fix\n" + $commit_message + "\n```"),
-                      inline: false
-                    },
-                    {
-                      name: "👤 Desenvolvedor",
-                      value: ("`@" + $author + "`"),
-                      inline: true
-                    },
-                    {
-                      name: "🌿 Branch",
-                      value: ("`" + $branch + "`"),
-                      inline: true
-                    },
-                    {
-                      name: "📦 Repositório",
-                      value: ("`" + $repository + "`"),
-                      inline: true
-                    },
-                    {
-                      name: "📊 Push",
-                      value: ("`" + $commit_count + " commit(s) enviado(s)`"),
-                      inline: true
-                    },
-                    {
-                      name: "🔗 Commit",
-                      value: ("[Visualizar Commit](" + $commit_url + ")"),
-                      inline: true
-                    },
-                    {
-                      name: "🧩 Comparação",
-                      value: ("[Ver Alterações](" + $compare_url + ")"),
-                      inline: true
-                    }
-                  ],
-                  image: {
-                    url: "https://cdn.discordapp.com/attachments/961677475191078992/1507497497013129386/ChatGPT_Image_22_de_mai._de_2026_18_36_44.png?ex=6a121df3&is=6a10cc73&hm=ad11b11c9f9495140310989c347cb28591968981e38cab44c11e9b83c2295bb4&"
-                  },
-                  thumbnail: {
-                    url: "https://cdn.discordapp.com/attachments/961677475191078992/1507497033555247135/imagem_2026-05-22_183429089-removebg-preview.png?ex=6a121d84&is=6a10cc04&hm=c80077741c6cc29bbc802297ca9a8748e49506f3b1ef58c2fbc121555dbfdcad&"
-                  },
-                  footer: {
-                    text: "Família Sant's • Devil Cassino"
-                  },
-                  timestamp: $timestamp
-                }
+          webhook_url = os.getenv("WEBHOOK_URL")
+          author = os.getenv("AUTHOR", "Desconhecido")
+          repository = os.getenv("REPOSITORY", "Desconhecido")
+          branch = os.getenv("BRANCH", "main")
+          commit_url = os.getenv("COMMIT_URL", "")
+          compare_url = os.getenv("COMPARE_URL", "")
+          commit_message = os.getenv("COMMIT_MESSAGE", "Sem mensagem")
+
+          github_event_path = os.getenv("GITHUB_EVENT_PATH")
+          commit_count = "1"
+
+          if github_event_path:
+              try:
+                  with open(github_event_path, "r", encoding="utf-8") as f:
+                      event = json.load(f)
+                  commit_count = str(len(event.get("commits", [])))
+              except Exception:
+                  commit_count = "1"
+
+          payload = {
+              "username": "Família Sant's • Deploy System",
+              "avatar_url": "https://cdn-icons-png.flaticon.com/512/906/906324.png",
+              "embeds": [
+                  {
+                      "title": "🚀 Nova atualização publicada",
+                      "description": "```ansi\n\u001b[2;31m[SISTEMA]\u001b[0m Novo deploy enviado para produção.\n\u001b[2;37m[STATUS]\u001b[0m Repositório sincronizado com sucesso.\n```",
+                      "color": 13369344,
+                      "fields": [
+                          {
+                              "name": "📌 Commit",
+                              "value": f"```fix\n{commit_message}\n```",
+                              "inline": False
+                          },
+                          {
+                              "name": "👤 Desenvolvedor",
+                              "value": f"`@{author}`",
+                              "inline": True
+                          },
+                          {
+                              "name": "🌿 Branch",
+                              "value": f"`{branch}`",
+                              "inline": True
+                          },
+                          {
+                              "name": "📦 Repositório",
+                              "value": f"`{repository}`",
+                              "inline": True
+                          },
+                          {
+                              "name": "📊 Push",
+                              "value": f"`{commit_count} commit(s) enviado(s)`",
+                              "inline": True
+                          },
+                          {
+                              "name": "🔗 Commit",
+                              "value": f"[Visualizar Commit]({commit_url})",
+                              "inline": True
+                          },
+                          {
+                              "name": "🧩 Comparação",
+                              "value": f"[Ver Alterações]({compare_url})",
+                              "inline": True
+                          }
+                      ],
+                      "image": {
+                          "url": "https://cdn.discordapp.com/attachments/961677475191078992/1507497497013129386/ChatGPT_Image_22_de_mai._de_2026_18_36_44.png"
+                      },
+                      "thumbnail": {
+                          "url": "https://cdn.discordapp.com/attachments/961677475191078992/1507497033555247135/imagem_2026-05-22_183429089-removebg-preview.png"
+                      },
+                      "footer": {
+                          "text": "Família Sant's • Devil Cassino"
+                      },
+                      "timestamp": datetime.now(timezone.utc).isoformat()
+                  }
               ]
-            }' > payload.json
+          }
 
-          curl -H "Content-Type: application/json" \
-               -X POST \
-               -d @payload.json \
-               "$WEBHOOK_URL"
+          with open("payload.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f, ensure_ascii=False)
+
+          subprocess.run([
+              "curl",
+              "-H", "Content-Type: application/json",
+              "-X", "POST",
+              "-d", "@payload.json",
+              webhook_url
+          ], check=True)
+          PY
