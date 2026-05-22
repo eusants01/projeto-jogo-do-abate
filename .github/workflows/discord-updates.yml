@@ -46,8 +46,8 @@ jobs:
                   commit_count = "1"
 
           payload = {
-              "username": "Família Sant's • Deploy System",
-              "avatar_url": "https://cdn-icons-png.flaticon.com/512/906/906324.png",
+              "username": "Família Sant's • Atualizações do Bot",
+              "avatar_url": "https://cdn.discordapp.com/attachments/961677475191078992/1507499658354884608/image.png?ex=6a121ff6&is=6a10ce76&hm=20c7cb822381f2b1ac36604d4d823baabfd6fe5d4267c471a9344cfc1c826ae4&",
               "embeds": [
                   {
                       "title": "🚀 Nova atualização publicada",
