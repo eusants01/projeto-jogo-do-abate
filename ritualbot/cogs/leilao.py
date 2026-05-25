@@ -1,240 +1,259 @@
 import asyncio
 import time
+import logging
+from dataclasses import dataclass, field
+from typing import Optional
+
 import discord
 from discord.ext import commands
 
 from utils.cassino_db import obter_saldo, remover_moedas, adicionar_moedas
 
+# ──────────────────────────────────────────────
+#  CONFIGURAÇÕES
+# ──────────────────────────────────────────────
+
 CANAL_LEILAO_ID = 1503972510285168691
-BANNER_LEILAO = "https://cdn.discordapp.com/attachments/961677475191078992/1506536746278719578/48a63abb-0e0c-4859-8518-5846b51ed4c1.png?ex=6a0e9f2e&is=6a0d4dae&hm=b5a3fd40fd1837ad3d509aaa155495be8927e6ba290619d850c7d0d36732e22c&"
 
-TEMPO_PADRAO = 10 * 60
-ANTI_SNIPER_SEGUNDOS = 30
-EXTENSAO_ANTI_SNIPER = 60
+BANNER_LEILAO = (
+    "https://cdn.discordapp.com/attachments/961677475191078992/"
+    "1506536746278719578/48a63abb-0e0c-4859-8518-5846b51ed4c1.png"
+    "?ex=6a0e9f2e&is=6a0d4dae&hm=b5a3fd40fd1837ad3d509aaa155495be8927e6ba290619d850c7d0d36732e22c&"
+)
 
-COR_LEILAO = 0x8B0000
+TEMPO_PADRAO_SEGUNDOS   = 10 * 60   # 10 min
+ANTI_SNIPER_SEGUNDOS    = 30        
+EXTENSAO_ANTI_SNIPER    = 60        
+MAXIMO_EXTENSOES        = 5         
+ATUALIZACAO_INTERVALO   = 10        
+MINIMO_INCREMENT        = 1         
+
+COR_LEILAO  = 0x8B0000
 COR_DOURADO = 0xD4AF37
-COR_ESCURO = 0x1A0000
+COR_ESCURO  = 0x1A0000
+COR_ERRO    = 0xFF4444
 
-CARGOS_CRIAR_LEILAO = [
-    # coloque IDs de cargos aqui depois
-    # 123456789012345678,
+CARGOS_CRIAR_LEILAO: list[int] = [
+    1508350514847289454,  # Criador de Leilões / Sants rsrs
+    1508350520864413700,  # Gerente de Leilões / N/A
 ]
 
+log = logging.getLogger("leilao")
+
+
+# ──────────────────────────────────────────────
+#  HELPERS
+# ──────────────────────────────────────────────
 
 def pode_criar_leilao(membro: discord.Member) -> bool:
+    """Retorna True se o membro pode iniciar um leilão."""
     if membro.guild_permissions.administrator:
         return True
+    cargos_ids = {cargo.id for cargo in membro.roles}
+    return bool(cargos_ids & set(CARGOS_CRIAR_LEILAO))
 
-    cargos_usuario = [cargo.id for cargo in membro.roles]
 
-    return any(cargo_id in cargos_usuario for cargo_id in CARGOS_CRIAR_LEILAO)
+def formatar_moedas(valor: int) -> str:
+    return f"🪙 `{valor:,.0f}`".replace(",", ".")
 
+
+def formatar_tempo(segundos: int) -> str:
+    if segundos <= 0:
+        return "⏰ Encerrando..."
+    h, resto = divmod(segundos, 3600)
+    m, s = divmod(resto, 60)
+    if h:
+        return f"{h}h {m:02d}min {s:02d}s"
+    if m:
+        return f"{m}min {s:02d}s"
+    return f"{s}s"
+
+
+def parsear_valor(raw: str) -> Optional[int]:
+    """Converte string para inteiro, aceitando pontos/vírgulas como separadores."""
+    try:
+        limpo = raw.strip().replace(".", "").replace(",", "").replace(" ", "")
+        return int(limpo)
+    except (ValueError, AttributeError):
+        return None
+
+@dataclass
+class EstadoLeilao:
+    item: str
+    descricao: str
+    lance_minimo: int
+    autor_id: int
+
+    lance_atual: int = 0
+    maior_apostador: Optional[discord.Member] = None
+    historico: list[tuple[str, int, float]] = field(default_factory=list)
+    finalizado: bool = False
+    extensoes: int = 0
+    fim: float = field(default_factory=lambda: time.time() + TEMPO_PADRAO_SEGUNDOS)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+
+    @property
+    def valor_exibido(self) -> int:
+        return self.lance_atual if self.lance_atual > 0 else self.lance_minimo
+
+    @property
+    def minimo_proximo_lance(self) -> int:
+        if self.lance_atual == 0:
+            return self.lance_minimo
+        return self.lance_atual + MINIMO_INCREMENT
+
+    def segundos_restantes(self) -> int:
+        return max(0, int(self.fim - time.time()))
+
+    def esta_vivo(self) -> bool:
+        return not self.finalizado and self.segundos_restantes() > 0
+
+    def aplicar_anti_sniper(self) -> bool:
+        """Prorroga tempo se houver snipe. Retorna True se prorrogou."""
+        if (
+            self.segundos_restantes() <= ANTI_SNIPER_SEGUNDOS
+            and self.extensoes < MAXIMO_EXTENSOES
+        ):
+            self.fim += EXTENSAO_ANTI_SNIPER
+            self.extensoes += 1
+            return True
+        return False
+
+
+# ──────────────────────────────────────────────
+#  MODAIS
+# ──────────────────────────────────────────────
 
 class CriarLeilaoModal(discord.ui.Modal, title="🎰 Criar Leilão do Diabo"):
-    def __init__(self, bot):
+    item = discord.ui.TextInput(
+        label="Item do leilão",
+        placeholder="Ex: Cargo VIP, Gamepass, Nitro…",
+        required=True,
+        max_length=80,
+    )
+    descricao = discord.ui.TextInput(
+        label="Descrição do item",
+        placeholder="Explique o que será entregue ao vencedor.",
+        required=True,
+        style=discord.TextStyle.paragraph,
+        max_length=700,
+    )
+    lance_inicial = discord.ui.TextInput(
+        label="Lance inicial (mínimo aceito)",
+        placeholder="Ex: 1000",
+        required=True,
+        max_length=12,
+    )
+
+    def __init__(self, bot: commands.Bot):
         super().__init__()
         self.bot = bot
 
-        self.item = discord.ui.TextInput(
-            label="Item do leilão",
-            placeholder="Ex: Cargo VIP, Gamepass, Nitro, Cargo personalizado...",
-            required=True,
-            max_length=80
-        )
-
-        self.descricao = discord.ui.TextInput(
-            label="Descrição do item",
-            placeholder="Explique o que será entregue ao vencedor.",
-            required=True,
-            style=discord.TextStyle.paragraph,
-            max_length=700
-        )
-
-        self.lance_inicial = discord.ui.TextInput(
-            label="Lance inicial",
-            placeholder="Ex: 1000",
-            required=True,
-            max_length=12
-        )
-
-        self.add_item(self.item)
-        self.add_item(self.descricao)
-        self.add_item(self.lance_inicial)
-
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            lance_inicial = int(
-                str(self.lance_inicial.value)
-                .replace(".", "")
-                .replace(",", "")
-                .strip()
+        valor = parsear_valor(self.lance_inicial.value)
+        if valor is None or valor <= 0:
+            return await interaction.response.send_message(
+                "❌ Lance inicial inválido. Use apenas números maiores que zero.",
+                ephemeral=True,
             )
-        except ValueError:
-            await interaction.response.send_message(
-                "❌ O lance inicial precisa ser um número válido.",
-                ephemeral=True
-            )
-            return
-
-        if lance_inicial <= 0:
-            await interaction.response.send_message(
-                "❌ O lance inicial precisa ser maior que zero.",
-                ephemeral=True
-            )
-            return
 
         canal = interaction.guild.get_channel(CANAL_LEILAO_ID)
-
-        if not canal:
-            await interaction.response.send_message(
-                "❌ Canal de leilão não encontrado.",
-                ephemeral=True
+        if canal is None:
+            return await interaction.response.send_message(
+                "❌ Canal de leilão não encontrado. Verifique o `CANAL_LEILAO_ID`.",
+                ephemeral=True,
             )
-            return
 
-        view = LeilaoView(
-            item=str(self.item.value),
-            descricao=str(self.descricao.value),
-            lance_inicial=lance_inicial,
-            autor_id=interaction.user.id
+        estado = EstadoLeilao(
+            item=self.item.value.strip(),
+            descricao=self.descricao.value.strip(),
+            lance_minimo=valor,
+            autor_id=interaction.user.id,
         )
 
-        msg = await canal.send(embed=view.embed(), view=view)
+        view = LeilaoView(estado)
+        msg = await canal.send(embed=view.build_embed(), view=view)
         view.mensagem = msg
 
-        asyncio.create_task(view.finalizar())
+        # Agenda finalização sem bloquear o handler
+        asyncio.create_task(view.ciclo_vida(), name=f"leilao_{msg.id}")
+
+        log.info(
+            "Leilão criado por %s | item=%r | mínimo=%d",
+            interaction.user,
+            estado.item,
+            valor,
+        )
 
         await interaction.response.send_message(
-            f"🎰 Leilão criado com sucesso em <#{CANAL_LEILAO_ID}>.",
-            ephemeral=True
+            f"✅ Leilão criado com sucesso em {canal.mention}!",
+            ephemeral=True,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        log.exception("Erro em CriarLeilaoModal", exc_info=error)
+        await interaction.response.send_message(
+            "⚠️ Ocorreu um erro inesperado ao criar o leilão.",
+            ephemeral=True,
         )
 
 
-class PainelLeilaoView(discord.ui.View):
-    def __init__(self, bot):
-        super().__init__(timeout=None)
-        self.bot = bot
-
-    @discord.ui.button(
-        label="Criar Leilão",
-        emoji="🎰",
-        style=discord.ButtonStyle.danger,
-        custom_id="leilao_criar"
+class LanceModal(discord.ui.Modal, title="💰 Fazer Lance"):
+    valor = discord.ui.TextInput(
+        label="Valor do lance",
+        placeholder="Ex: 5000",
+        required=True,
+        max_length=12,
     )
-    async def criar_leilao(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not pode_criar_leilao(interaction.user):
-            await interaction.response.send_message(
-                "❌ Apenas administradores ou cargos autorizados podem iniciar leilões.",
-                ephemeral=True
-            )
-            return
 
-        await interaction.response.send_modal(CriarLeilaoModal(self.bot))
-
-    @discord.ui.button(
-        label="Como Funciona",
-        emoji="📜",
-        style=discord.ButtonStyle.secondary,
-        custom_id="leilao_info"
-    )
-    async def como_funciona(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="📜 Como funciona o Leilão do Diabo",
-            description=(
-                "No **Leilão do Diabo**, cada lance é uma aposta real usando **🪙 Moedas do Diabo**.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "💰 **Lances cobrados na hora**\n"
-                "Ao dar um lance, o valor é removido imediatamente do seu saldo.\n\n"
-                "↩️ **Devolução automática**\n"
-                "Se outro membro superar seu lance, suas moedas são devolvidas.\n\n"
-                "⏳ **Anti-sniper**\n"
-                "Se alguém apostar nos últimos segundos, o tempo pode ser estendido.\n\n"
-                "🏆 **Vencedor automático**\n"
-                "Quando o tempo acabar, o maior apostador vence.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "> A casa aceita lances, mas nunca perdoa indecisão."
-            ),
-            color=COR_LEILAO
-        )
-        embed.set_image(url=BANNER_LEILAO)
-        embed.set_footer(text="Família Sant’s • Leilão do Diabo")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-class LanceModal(discord.ui.Modal, title="💰 Dar Lance"):
-    def __init__(self, view):
+    def __init__(self, view: "LeilaoView"):
         super().__init__()
-        self.view_leilao = view
-
-        self.valor = discord.ui.TextInput(
-            label="Valor do lance",
-            placeholder="Exemplo: 5000",
-            required=True,
-            max_length=12
-        )
-
-        self.add_item(self.valor)
+        self._leilao_view = view
 
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            valor = int(
-                str(self.valor.value)
-                .replace(".", "")
-                .replace(",", "")
-                .strip()
+        valor = parsear_valor(self.valor.value)
+        if valor is None:
+            return await interaction.response.send_message(
+                "❌ Valor inválido. Use apenas números.",
+                ephemeral=True,
             )
-        except ValueError:
-            await interaction.response.send_message(
-                "❌ Informe um valor válido.",
-                ephemeral=True
-            )
-            return
+        await self._leilao_view.processar_lance(interaction, valor)
 
-        await self.view_leilao.processar_lance(interaction, valor)
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        log.exception("Erro em LanceModal", exc_info=error)
+        await interaction.response.send_message(
+            "⚠️ Erro ao processar seu lance.",
+            ephemeral=True,
+        )
 
+
+# ──────────────────────────────────────────────
+#  VIEW DO LEILÃO ATIVO
+# ──────────────────────────────────────────────
 
 class LeilaoView(discord.ui.View):
-    def __init__(self, item, descricao, lance_inicial, autor_id):
+    def __init__(self, estado: EstadoLeilao):
         super().__init__(timeout=None)
+        self.estado = estado
+        self.mensagem: Optional[discord.Message] = None
 
-        self.item = item
-        self.descricao = descricao
-        self.lance_inicial = lance_inicial
-        self.lance_atual = 0
-        self.maior_apostador = None
-        self.autor_id = autor_id
-        self.historico = []
-        self.finalizado = False
-        self.mensagem = None
-        self.fim = time.time() + TEMPO_PADRAO
+    # ── Embeds ──────────────────────────────────
 
-    def tempo_restante(self):
-        restante = int(self.fim - time.time())
+    def build_embed(self) -> discord.Embed:
+        e = self.estado
+        apostador = e.maior_apostador.mention if e.maior_apostador else "*(nenhum ainda)*"
+        valor = e.valor_exibido
 
-        if restante <= 0:
-            return "Encerrando..."
+        linhas_hist = [
+            f"`#{i:02d}` **{nome}** — {formatar_moedas(lance)}"
+            for i, (nome, lance, _) in enumerate(reversed(e.historico[-8:]), 1)
+        ] or ["*Nenhum lance registrado ainda.*"]
 
-        minutos = restante // 60
-        segundos = restante % 60
-
-        return f"{minutos}min {segundos}s"
-
-    def valor_atual(self):
-        return self.lance_atual if self.lance_atual > 0 else self.lance_inicial
-
-    def embed(self):
-        maior = self.maior_apostador.mention if self.maior_apostador else "Nenhum apostador ainda"
-        valor = self.valor_atual()
-
-        historico_txt = ""
-
-        for nome, lance in self.historico[-5:][::-1]:
-            historico_txt += f"• **{nome}** — 🪙 `{lance:,}`\n"
-
-        if not historico_txt:
-            historico_txt = "Nenhum lance registrado."
+        barra_tempo = self._barra_progresso()
+        extensao_aviso = (
+            f"\n⚡ *Prorrogado {e.extensoes}×* (Anti-Sniper ativo)"
+            if e.extensoes > 0 else ""
+        )
 
         embed = discord.Embed(
             title="🎰 LEILÃO DO DIABO",
@@ -242,249 +261,405 @@ class LeilaoView(discord.ui.View):
                 "Senhoras e senhores, a mesa foi aberta.\n"
                 "Somente os mais ousados sairão com o prêmio.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📦 **Item em leilão:**\n"
-                f"**{self.item}**\n\n"
-                f"📜 **Descrição:**\n"
-                f"{self.descricao}\n\n"
-                f"💰 **Lance atual:** `🪙 {valor:,}`\n"
-                f"👑 **Maior apostador:** {maior}\n"
-                f"⏳ **Tempo restante:** `{self.tempo_restante()}`\n\n"
+                f"📦 **Item em leilão:**\n**{e.item}**\n\n"
+                f"📜 **Descrição:**\n{e.descricao}\n\n"
+                f"💰 **Lance atual:** {formatar_moedas(valor)}\n"
+                f"👑 **Maior apostador:** {apostador}\n"
+                f"🔢 **Mínimo próximo:** {formatar_moedas(e.minimo_proximo_lance)}\n"
+                f"⏳ **Tempo restante:** `{formatar_tempo(e.segundos_restantes())}`\n"
+                f"{barra_tempo}{extensao_aviso}\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "🎲 **Regras da mesa:**\n"
-                "• Cada lance é cobrado na hora.\n"
-                "• Quem for superado recebe as moedas de volta.\n"
-                "• Lances no final podem estender o tempo.\n\n"
-                "> A casa sempre observa."
+                "🎲 **Regras:**\n"
+                "• Lance cobrado imediatamente.\n"
+                "• Superado? Suas moedas voltam.\n"
+                "• Lances no final estendem o tempo.\n\n"
+                "> *A casa sempre observa.*"
             ),
-            color=COR_LEILAO
+            color=COR_LEILAO,
         )
 
         embed.add_field(
-            name="📊 Últimos Lances",
-            value=historico_txt,
-            inline=False
+            name=f"📊 Últimos Lances ({len(e.historico)} total)",
+            value="\n".join(linhas_hist),
+            inline=False,
         )
-
         embed.set_image(url=BANNER_LEILAO)
-        embed.set_footer(text="Família Sant’s • Leilão do Diabo")
-
+        embed.set_footer(text="Família Sant's • Leilão do Diabo")
         return embed
 
-    async def atualizar(self):
-        if self.mensagem:
-            await self.mensagem.edit(embed=self.embed(), view=self)
+    def build_embed_finalizado(self) -> discord.Embed:
+        e = self.estado
+        if e.maior_apostador:
+            embed = discord.Embed(
+                title="🏆 LEILÃO FINALIZADO",
+                description=(
+                    "O martelo caiu. A casa reconheceu o vencedor.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"📦 **Item:** {e.item}\n"
+                    f"👑 **Vencedor:** {e.maior_apostador.mention}\n"
+                    f"💰 **Lance final:** {formatar_moedas(e.lance_atual)}\n"
+                    f"🔢 **Total de lances:** {len(e.historico)}\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "> O pagamento foi realizado automaticamente."
+                ),
+                color=COR_DOURADO,
+            )
+        else:
+            embed = discord.Embed(
+                title="☠️ LEILÃO ENCERRADO SEM VENCEDOR",
+                description=(
+                    f"📦 **Item:** {e.item}\n\n"
+                    "Nenhum lance foi realizado.\n\n"
+                    "> *Nem todos tiveram coragem de sentar à mesa.*"
+                ),
+                color=COR_ESCURO,
+            )
+        embed.set_image(url=BANNER_LEILAO)
+        embed.set_footer(text="Família Sant's • Leilão do Diabo")
+        return embed
+
+    def _barra_progresso(self) -> str:
+        total = TEMPO_PADRAO_SEGUNDOS + (self.estado.extensoes * EXTENSAO_ANTI_SNIPER)
+        restante = self.estado.segundos_restantes()
+        proporcao = max(0.0, min(1.0, restante / total))
+        blocos = 20
+        cheios = int(proporcao * blocos)
+        return "\n`[" + "█" * cheios + "░" * (blocos - cheios) + "]`"
+
+    # ── Lógica de lance ──────────────────────────
 
     async def processar_lance(self, interaction: discord.Interaction, valor: int):
-        if self.finalizado:
-            await interaction.response.send_message(
-                "❌ Este leilão já foi finalizado.",
-                ephemeral=True
-            )
-            return
+        e = self.estado
 
-        minimo = self.lance_atual + 1 if self.lance_atual > 0 else self.lance_inicial
+        async with e._lock:
+            # 1. Leilão ainda ativo?
+            if e.finalizado:
+                return await interaction.response.send_message(
+                    "❌ Este leilão já foi finalizado.", ephemeral=True
+                )
+            if not e.esta_vivo():
+                return await interaction.response.send_message(
+                    "❌ O tempo deste leilão expirou.", ephemeral=True
+                )
 
-        if valor < minimo:
-            await interaction.response.send_message(
-                f"❌ O lance mínimo agora é **🪙 {minimo:,}**.",
-                ephemeral=True
-            )
-            return
+            # 2. Usuário já lidera?
+            if e.maior_apostador and interaction.user.id == e.maior_apostador.id:
+                return await interaction.response.send_message(
+                    "⚠️ Você já possui o maior lance! Aguarde ser superado.", ephemeral=True
+                )
 
-        if self.maior_apostador and interaction.user.id == self.maior_apostador.id:
-            await interaction.response.send_message(
-                "⚠️ Você já possui o maior lance.",
-                ephemeral=True
-            )
-            return
+            # 3. Valor mínimo
+            minimo = e.minimo_proximo_lance
+            if valor < minimo:
+                return await interaction.response.send_message(
+                    f"❌ Lance mínimo: **{formatar_moedas(minimo)}**\n"
+                    f"Você tentou: {formatar_moedas(valor)}",
+                    ephemeral=True,
+                )
 
-        saldo = obter_saldo(interaction.user.id)
+            # 4. Saldo suficiente
+            saldo = obter_saldo(interaction.user.id)
+            if saldo < valor:
+                return await interaction.response.send_message(
+                    f"❌ Saldo insuficiente.\n"
+                    f"Seu saldo: {formatar_moedas(saldo)}\n"
+                    f"Lance desejado: {formatar_moedas(valor)}",
+                    ephemeral=True,
+                )
 
-        if saldo < valor:
-            await interaction.response.send_message(
-                f"❌ Você não possui moedas suficientes.\nSeu saldo: **🪙 {saldo:,}**",
-                ephemeral=True
-            )
-            return
+            # 5. Transação
+            anterior_apostador = e.maior_apostador
+            anterior_lance = e.lance_atual
 
-        remover_moedas(interaction.user.id, valor)
+            remover_moedas(interaction.user.id, valor)
 
-        if self.maior_apostador:
-            adicionar_moedas(self.maior_apostador.id, self.lance_atual)
+            if anterior_apostador is not None:
+                adicionar_moedas(anterior_apostador.id, anterior_lance)
 
-        self.lance_atual = valor
-        self.maior_apostador = interaction.user
-        self.historico.append((interaction.user.display_name, valor))
+            # 6. Atualiza estado
+            e.lance_atual = valor
+            e.maior_apostador = interaction.user
+            e.historico.append((interaction.user.display_name, valor, time.time()))
 
-        restante = self.fim - time.time()
+            # 7. Anti-sniper
+            prorrogou = e.aplicar_anti_sniper()
 
-        if restante <= ANTI_SNIPER_SEGUNDOS:
-            self.fim += EXTENSAO_ANTI_SNIPER
-
-        await interaction.response.send_message(
-            f"💰 Lance registrado: **🪙 {valor:,}**",
-            ephemeral=True
+        # Fora do lock: responder e atualizar embed
+        aviso_sniper = (
+            f"\n⚡ *Tempo estendido em {EXTENSAO_ANTI_SNIPER}s! (Anti-Sniper)*"
+            if prorrogou else ""
         )
 
-        await self.atualizar()
+        await interaction.response.send_message(
+            f"✅ Lance registrado: **{formatar_moedas(valor)}**{aviso_sniper}",
+            ephemeral=True,
+        )
+
+        log.info(
+            "Lance: %s → %d | leilão: %s",
+            interaction.user,
+            valor,
+            self.estado.item,
+        )
+
+        await self._atualizar_embed()
+
+    # ── Atualização do embed ─────────────────────
+
+    async def _atualizar_embed(self):
+        if self.mensagem:
+            try:
+                await self.mensagem.edit(embed=self.build_embed(), view=self)
+            except discord.HTTPException as exc:
+                log.warning("Falha ao atualizar embed: %s", exc)
+
+    # ── Ciclo de vida ────────────────────────────
+
+    async def ciclo_vida(self):
+        """Loop principal: atualiza embed periodicamente e finaliza ao expirar."""
+        while self.estado.esta_vivo():
+            await asyncio.sleep(ATUALIZACAO_INTERVALO)
+            if not self.estado.finalizado:
+                await self._atualizar_embed()
+
+        await self._finalizar()
+
+    async def _finalizar(self):
+        e = self.estado
+
+        async with e._lock:
+            if e.finalizado:
+                return
+            e.finalizado = True
+
+        # Desabilita botões
+        for item in self.children:
+            item.disabled = True
+
+        # Notifica vencedor por DM (melhor UX)
+        if e.maior_apostador:
+            try:
+                await e.maior_apostador.send(
+                    f"🏆 Você venceu o leilão **{e.item}** com um lance de "
+                    f"{formatar_moedas(e.lance_atual)}!\n"
+                    "Entre em contato com a administração para resgatar seu prêmio."
+                )
+            except discord.Forbidden:
+                log.info("DM bloqueada para %s", e.maior_apostador)
+
+        if self.mensagem:
+            try:
+                await self.mensagem.edit(embed=self.build_embed_finalizado(), view=self)
+            except discord.HTTPException as exc:
+                log.error("Falha ao editar embed final: %s", exc)
+
+        log.info(
+            "Leilão finalizado | item=%r | vencedor=%s | lance=%d | lances_total=%d",
+            e.item,
+            e.maior_apostador,
+            e.lance_atual,
+            len(e.historico),
+        )
+
+    # ── Botões ───────────────────────────────────
 
     @discord.ui.button(
         label="Dar Lance",
         emoji="💰",
         style=discord.ButtonStyle.danger,
-        custom_id="leilao_lance"
+        custom_id="leilao_lance",
+        row=0,
     )
-    async def dar_lance(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def btn_dar_lance(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LanceModal(self))
 
     @discord.ui.button(
         label="+500",
         emoji="🪙",
         style=discord.ButtonStyle.secondary,
-        custom_id="leilao_500"
+        custom_id="leilao_500",
+        row=0,
     )
-    async def lance_500(self, interaction: discord.Interaction, button: discord.ui.Button):
-        base = self.valor_atual()
-        await self.processar_lance(interaction, base + 500)
+    async def btn_500(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.processar_lance(interaction, self.estado.valor_exibido + 500)
 
     @discord.ui.button(
         label="+1.000",
         emoji="🪙",
         style=discord.ButtonStyle.secondary,
-        custom_id="leilao_1000"
+        custom_id="leilao_1000",
+        row=0,
     )
-    async def lance_1000(self, interaction: discord.Interaction, button: discord.ui.Button):
-        base = self.valor_atual()
-        await self.processar_lance(interaction, base + 1000)
+    async def btn_1000(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.processar_lance(interaction, self.estado.valor_exibido + 1_000)
+
+    @discord.ui.button(
+        label="+5.000",
+        emoji="🪙",
+        style=discord.ButtonStyle.secondary,
+        custom_id="leilao_5000",
+        row=0,
+    )
+    async def btn_5000(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.processar_lance(interaction, self.estado.valor_exibido + 5_000)
 
     @discord.ui.button(
         label="Histórico",
         emoji="📜",
         style=discord.ButtonStyle.secondary,
-        custom_id="leilao_historico"
+        custom_id="leilao_historico",
+        row=1,
     )
-    async def historico_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.historico:
-            await interaction.response.send_message(
-                "📜 Nenhum lance registrado ainda.",
-                ephemeral=True
+    async def btn_historico(self, interaction: discord.Interaction, button: discord.ui.Button):
+        e = self.estado
+        if not e.historico:
+            return await interaction.response.send_message(
+                "📜 Nenhum lance registrado ainda.", ephemeral=True
             )
-            return
 
-        texto = ""
-
-        for nome, lance in self.historico[-10:][::-1]:
-            texto += f"• **{nome}** — 🪙 `{lance:,}`\n"
-
+        linhas = [
+            f"`#{i:02d}` **{nome}** — {formatar_moedas(lance)}"
+            for i, (nome, lance, _) in enumerate(reversed(e.historico), 1)
+        ]
+        # Paginação simples (máx 20 por embed)
         embed = discord.Embed(
-            title="📜 Histórico do Leilão",
-            description=texto,
-            color=COR_LEILAO
+            title=f"📜 Histórico — {e.item}",
+            description="\n".join(linhas[:20]),
+            color=COR_LEILAO,
         )
-
+        embed.set_footer(text=f"{len(e.historico)} lances no total")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    async def finalizar(self):
-        await asyncio.sleep(1)
+    @discord.ui.button(
+        label="Meu Saldo",
+        emoji="💼",
+        style=discord.ButtonStyle.secondary,
+        custom_id="leilao_saldo",
+        row=1,
+    )
+    async def btn_saldo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        saldo = obter_saldo(interaction.user.id)
+        minimo = self.estado.minimo_proximo_lance
+        pode = "✅" if saldo >= minimo else "❌"
+        await interaction.response.send_message(
+            f"💼 **Seu saldo:** {formatar_moedas(saldo)}\n"
+            f"🎯 **Próximo mínimo:** {formatar_moedas(minimo)}\n"
+            f"{pode} Você {'pode' if saldo >= minimo else 'não pode'} dar o próximo lance.",
+            ephemeral=True,
+        )
 
-        while time.time() < self.fim:
-            await asyncio.sleep(5)
 
-            if not self.finalizado:
-                await self.atualizar()
+# ──────────────────────────────────────────────
+#  PAINEL DO LEILÃO
+# ──────────────────────────────────────────────
 
-        self.finalizado = True
+class PainelLeilaoView(discord.ui.View):
+    def __init__(self, bot: commands.Bot):
+        super().__init__(timeout=None)
+        self.bot = bot
 
-        for item in self.children:
-            item.disabled = True
-
-        if self.maior_apostador:
-            embed = discord.Embed(
-                title="🏆 LEILÃO FINALIZADO",
-                description=(
-                    "O martelo caiu. A casa reconheceu o vencedor.\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"📦 **Item:** {self.item}\n"
-                    f"👑 **Vencedor:** {self.maior_apostador.mention}\n"
-                    f"💰 **Lance final:** 🪙 **{self.lance_atual:,}**\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    "> O pagamento já foi realizado automaticamente."
-                ),
-                color=COR_DOURADO
+    @discord.ui.button(
+        label="Criar Leilão",
+        emoji="🎰",
+        style=discord.ButtonStyle.danger,
+        custom_id="painel_criar_leilao",
+    )
+    async def btn_criar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not pode_criar_leilao(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Apenas administradores ou cargos autorizados podem iniciar leilões.",
+                ephemeral=True,
             )
-        else:
-            embed = discord.Embed(
-                title="☠️ LEILÃO ENCERRADO",
-                description=(
-                    f"📦 **Item:** {self.item}\n\n"
-                    "Nenhum lance foi realizado.\n\n"
-                    "> Nem todos tiveram coragem de sentar à mesa."
-                ),
-                color=COR_ESCURO
-            )
+        await interaction.response.send_modal(CriarLeilaoModal(self.bot))
 
+    @discord.ui.button(
+        label="Como Funciona",
+        emoji="📜",
+        style=discord.ButtonStyle.secondary,
+        custom_id="painel_como_funciona",
+    )
+    async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            title="📜 Como funciona o Leilão do Diabo",
+            description=(
+                "No **Leilão do Diabo**, cada lance usa **🪙 Moedas do Diabo** de verdade.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "💰 **Lances cobrados na hora**\n"
+                "Ao dar um lance, o valor é removido imediatamente do seu saldo.\n\n"
+                "↩️ **Devolução automática**\n"
+                "Se alguém superar seu lance, suas moedas são devolvidas na hora.\n\n"
+                "⚡ **Anti-Sniper**\n"
+                f"Lances nos últimos **{ANTI_SNIPER_SEGUNDOS}s** estendem o tempo em "
+                f"**{EXTENSAO_ANTI_SNIPER}s** (máx. {MAXIMO_EXTENSOES}×).\n\n"
+                "🏆 **Vencedor automático**\n"
+                "Quando o tempo acabar, o maior apostador vence e recebe aviso por DM.\n\n"
+                "💼 **Verifique seu saldo**\n"
+                "Use o botão **Meu Saldo** para ver se você pode dar o próximo lance.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "> *A casa aceita lances, mas nunca perdoa indecisão.*"
+            ),
+            color=COR_LEILAO,
+        )
         embed.set_image(url=BANNER_LEILAO)
-        embed.set_footer(text="Família Sant’s • Leilão do Diabo")
+        embed.set_footer(text="Família Sant's • Leilão do Diabo")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        if self.mensagem:
-            await self.mensagem.edit(embed=embed, view=self)
 
+# ──────────────────────────────────────────────
+#  COG
+# ──────────────────────────────────────────────
 
 class Leilao(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Registra a view persistente para sobreviver a reinicios
         self.bot.add_view(PainelLeilaoView(bot))
+
+    # ── Comandos ─────────────────────────────────
 
     @commands.command(name="painel_leilao")
     @commands.has_permissions(administrator=True)
-    async def painel_leilao(self, ctx):
+    async def cmd_painel_leilao(self, ctx: commands.Context):
+        """Envia o painel permanente de leilão no canal atual."""
         try:
             await ctx.message.delete()
-        except Exception:
+        except discord.HTTPException:
             pass
 
         embed = discord.Embed(
             title="🎰 PAINEL DO LEILÃO DO DIABO",
             description=(
-                "Bem-vindo ao salão de apostas da Família Sant’s.\n\n"
-                "Aqui, administradores e cargos autorizados podem iniciar leilões oficiais "
-                "utilizando **🪙 Moedas do Diabo**.\n\n"
+                "Bem-vindo ao salão de apostas da **Família Sant's**.\n\n"
+                "Administradores e cargos autorizados podem iniciar leilões oficiais "
+                "usando **🪙 Moedas do Diabo**.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 "📦 **Itens possíveis:**\n"
-                "• Cargos Exclusivos\n"
-                "• Gamepasses\n"
-                "• VIP\n"
-                "• Recompensas especiais\n"
-                "• Itens secretos\n\n"
+                "• Cargos Exclusivos • Gamepasses\n"
+                "• VIP • Recompensas especiais • Itens secretos\n\n"
                 "💰 **Sistema de lances:**\n"
-                "• O lance é cobrado imediatamente.\n"
-                "• Se outro membro superar, suas moedas voltam.\n"
-                "• O maior apostador vence automaticamente no final.\n\n"
+                "• Lance cobrado imediatamente.\n"
+                "• Superado? Suas moedas voltam.\n"
+                "• O maior apostador vence ao fim do tempo.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "> Faça sua oferta. A casa está observando."
+                "> *Faça sua oferta. A casa está observando.*"
             ),
-            color=COR_LEILAO
+            color=COR_LEILAO,
         )
-
         embed.set_image(url=BANNER_LEILAO)
-        embed.set_footer(text="Família Sant’s • Leilão do Diabo")
-
+        embed.set_footer(text="Família Sant's • Leilão do Diabo")
         await ctx.send(embed=embed, view=PainelLeilaoView(self.bot))
 
-    @painel_leilao.error
-    async def painel_leilao_error(self, ctx, error):
+    @cmd_painel_leilao.error
+    async def painel_error(self, ctx: commands.Context, error: Exception):
         if isinstance(error, commands.MissingPermissions):
             await ctx.reply(
-                "❌ Apenas administradores podem enviar o painel de leilão.",
-                delete_after=8
+                "❌ Apenas administradores podem enviar o painel.",
+                delete_after=8,
             )
         else:
-            await ctx.reply(
-                "⚠️ Ocorreu um erro ao enviar o painel de leilão.",
-                delete_after=8
-            )
-            print(f"[ERRO PAINEL LEILÃO] {error}")
+            log.exception("Erro no painel_leilao", exc_info=error)
+            await ctx.reply("⚠️ Ocorreu um erro inesperado.", delete_after=8)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(Leilao(bot))
