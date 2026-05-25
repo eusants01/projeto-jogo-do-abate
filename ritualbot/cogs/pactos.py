@@ -54,7 +54,7 @@ if remover_moedas is None:
 #                   CONFIGURAÇÕES
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CHANCE_BASE    = 10000
+CHANCE_BASE    = 100
 CHANCE_PACTO   = 1
 TIMEOUT_PACTO  = 300
 CUSTO_SEGURO   = 5000
@@ -64,7 +64,7 @@ COOLDOWN_AUTO  = 3600
 ID_CANAL_LOG     = 1507228052776681502
 ID_CANAL_PUBLICO = 0
 
-IMAGEM_PADRAO = "https://i.imgur.com/MX7rQpp.png"
+IMAGEM_PADRAO = "https://cdn.discordapp.com/attachments/1500528332008325281/1508349076108873728/content.png?ex=6a15370b&is=6a13e58b&hm=c08e065be149e22746d9b4495a94b37af25866cd0052441b6b027f72cc3d6be7&"
 SEPARADOR     = "```\n ─────────────────────────── \n```"
 
 CARGOS_PROTEGIDOS = [
@@ -179,7 +179,7 @@ PACTOS = {
         {
             "nome": "🔄 Pacto da Inversão",
             "tipo": "inversao",
-            "recompensa_min": 40000, "recompensa_max": 80000,
+            "recompensa_min": 80000, "recompensa_max": 100000,
             "descricao": "Entregue um cargo e receba uma recompensa generosa em moedas.",
             "consequencia": "Perde um cargo aleatório. Ganha recompensa em moedas.",
             "perde_cargo": True, "rejeitar_custo": 5000,
@@ -188,7 +188,7 @@ PACTOS = {
         {
             "nome": "💎 Pacto do Cofre",
             "tipo": "cofre",
-            "recompensa_min": 60000, "recompensa_max": 120000,
+            "recompensa_min": 90000, "recompensa_max": 180000,
             "descricao": "O Cassino abre um cofre secreto. O conteúdo é seu — por um preço em moedas.",
             "consequencia": "Perde 20% das moedas atuais. Ganha muito mais.",
             "perde_cargo": False, "rejeitar_custo": 5000,
@@ -199,7 +199,7 @@ PACTOS = {
         {
             "nome": "💀 Pacto da Ruína",
             "tipo": "normal",
-            "recompensa_min": 75000,  "recompensa_max": 100000,
+            "recompensa_min": 7525500,  "recompensa_max": 10000000,
             "descricao": "Uma proposta rara surgiu. Poucos recebem. Menos ainda aceitam.",
             "consequencia": "Perderá um cargo aleatório.",
             "perde_cargo": True, "rejeitar_custo": 10000,
@@ -208,7 +208,7 @@ PACTOS = {
         {
             "nome": "💀 Pacto do Diabo",
             "tipo": "diabo",
-            "recompensa_min": 200000, "recompensa_max": 500000,
+            "recompensa_min": 2500000, "recompensa_max": 5000000,
             "descricao": "A maior oferta que o Cassino já fez. Recompensa absurda. Preço? Tudo.",
             "consequencia": "Perde TODOS os cargos não protegidos.",
             "perde_cargo": False, "rejeitar_custo": 20000,
@@ -217,7 +217,7 @@ PACTOS = {
         {
             "nome": "👑 Pacto do Rei",
             "tipo": "rei",
-            "recompensa_min": 100000, "recompensa_max": 200000,
+            "recompensa_min": 1000000, "recompensa_max": 2000000,
             "descricao": "O Cassino oferece poder e riqueza. Nenhum cargo é removido — desta vez.",
             "consequencia": "Apenas moedas. Uma raridade.",
             "perde_cargo": False, "rejeitar_custo": 15000,
