@@ -17,7 +17,7 @@ GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
 COR_CASSINO = 0x8B0000
 COR_DOURADO = 0xD4AF37
-COOLDOWN_ROLETA_MINUTOS = 2
+COOLDOWN_ROLETA_MINUTOS = 1
 
 
 RESULTADOS_ROLETA = [
@@ -25,7 +25,7 @@ RESULTADOS_ROLETA = [
         "nome": "Fortuna Pequena",
         "raridade": "⚪ Comum",
         "tipo": "ganho",
-        "valor": 100,
+        "valor": 1000,
         "peso": 25,
         "frase": "A casa permitiu uma pequena vitória."
     },
@@ -33,7 +33,7 @@ RESULTADOS_ROLETA = [
         "nome": "Sorte Passageira",
         "raridade": "⚪ Comum",
         "tipo": "ganho",
-        "valor": 150,
+        "valor": 5000,
         "peso": 20,
         "frase": "Sua sorte ainda respira."
     },
@@ -41,7 +41,7 @@ RESULTADOS_ROLETA = [
         "nome": "Bolsa de Moedas",
         "raridade": "🟢 Incomum",
         "tipo": "ganho",
-        "valor": 300,
+        "valor": 7500,
         "peso": 15,
         "frase": "O Dealer sorriu brevemente."
     },
@@ -49,7 +49,7 @@ RESULTADOS_ROLETA = [
         "nome": "Aposta Favorável",
         "raridade": "🟢 Incomum",
         "tipo": "ganho",
-        "valor": 500,
+        "valor": 15000,
         "peso": 10,
         "frase": "A roleta caiu ao seu favor."
     },
@@ -57,7 +57,7 @@ RESULTADOS_ROLETA = [
         "nome": "Prêmio Proibido",
         "raridade": "🔵 Raro",
         "tipo": "ganho",
-        "valor": 1000,
+        "valor": 50000,
         "peso": 6,
         "frase": "O cassino ficou em silêncio por um instante."
     },
@@ -65,7 +65,7 @@ RESULTADOS_ROLETA = [
         "nome": "Jackpot Sombrio",
         "raridade": "🔴 Lendário",
         "tipo": "ganho",
-        "valor": 2500,
+        "valor": 75000,
         "peso": 2,
         "frase": "O Dealer marcou seu nome."
     },
@@ -73,7 +73,7 @@ RESULTADOS_ROLETA = [
         "nome": "Taxa da Casa",
         "raridade": "🟣 Amaldiçoado",
         "tipo": "perda",
-        "valor": 100,
+        "valor": 9000,
         "peso": 12,
         "frase": "A casa recolheu sua parte."
     },
@@ -81,7 +81,7 @@ RESULTADOS_ROLETA = [
         "nome": "Dívida Pequena",
         "raridade": "🟣 Amaldiçoado",
         "tipo": "perda",
-        "valor": 250,
+        "valor": 14000,
         "peso": 7,
         "frase": "Toda fortuna exige um preço."
     },
@@ -89,7 +89,7 @@ RESULTADOS_ROLETA = [
         "nome": "A Casa Sempre Ganha",
         "raridade": "💀 Maldição",
         "tipo": "perda",
-        "valor": 500,
+        "valor": 76000,
         "peso": 3,
         "frase": "Nem toda aposta termina em vitória."
     },
