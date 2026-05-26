@@ -28,11 +28,11 @@ SEPARADOR = "```\n ────────────────────�
 #              CONFIGURAÇÃO DO DAILY
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-DAILY_MIN       = 500
-DAILY_MAX       = 1500
-DAILY_BONUS_MIN = 2000   # bônus de streak a partir do dia 7
-DAILY_BONUS_MAX = 5000
-STREAK_BONUS    = 7      # dias consecutivos para bônus
+DAILY_MIN       = 30000
+DAILY_MAX       = 42000
+DAILY_BONUS_MIN = 11000   
+DAILY_BONUS_MAX = 56000
+STREAK_BONUS    = 3      
 
 # Frases temáticas para o daily
 FRASES_DAILY = [
