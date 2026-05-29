@@ -84,6 +84,7 @@ async def carregar_cogs():
         "cogs.roleta",
         "cogs.leilao",
     ]
+    
 
     for cog in cogs:
         try:
