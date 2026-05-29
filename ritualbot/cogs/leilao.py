@@ -41,10 +41,6 @@ CARGOS_CRIAR_LEILAO: list[int] = [
 log = logging.getLogger("leilao")
 
 
-# ──────────────────────────────────────────────
-#  HELPERS
-# ──────────────────────────────────────────────
-
 def pode_criar_leilao(membro: discord.Member) -> bool:
     """Retorna True se o membro pode iniciar um leilão."""
     if membro.guild_permissions.administrator:
