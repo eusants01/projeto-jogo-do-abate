@@ -182,7 +182,16 @@ class Levels(commands.Cog):
 
                 canal_destino = None
                 if LEVELUP_CHANNEL_ID:
-                    canal_destino = message.guild.get_channel(LEVELUP_CHANNEL_ID)
+                    canal_destino = self.bot.get_channel(LEVELUP_CHANNEL_ID)  # busca global, mais confiável
+                if canal_destino is None:
+                    # fallback assíncrono caso não esteja no cache
+                    try:
+                        canal_destino = await self.bot.fetch_channel(LEVELUP_CHANNEL_ID)
+                    except discord.NotFound:
+                        print(f"[LEVELS] Canal {LEVELUP_CHANNEL_ID} não encontrado.")
+                    except discord.Forbidden:
+                        print(f"[LEVELS] Sem permissão no canal {LEVELUP_CHANNEL_ID}.")
+
                 canal_destino = canal_destino or message.channel
                 await canal_destino.send(embed=embed)
 
