@@ -185,7 +185,7 @@ Além do uso em comunidades, o projeto também serve como prática de desenvolvi
 
 ## 👨‍💻 Desenvolvedor
 
-**Daniel Candido**
+**Daniel / Sants**
 
 Estudante de Engenharia de Software, com foco em desenvolvimento Python e backend.
 
